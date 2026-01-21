@@ -134,18 +134,22 @@ export const chatStorageService = {
       const metaKey = `chat_meta_${sessionId}`;
 
       const messages = (await idbGet(historyKey)) || [];
+      const existingIndex = messages.findIndex(m => m.id === message.id);
 
-      if (!messages.find(m => m.id === message.id)) {
-        messages.push(message);
-        await idbSet(historyKey, messages);
-
-        const existingMeta = (await idbGet(metaKey)) || {};
-        const meta = {
-          title: title || existingMeta.title || "New Chat",
-          lastModified: Date.now(),
-        };
-        await idbSet(metaKey, meta);
+      if (existingIndex !== -1) {
+        messages[existingIndex] = message; // Update
+      } else {
+        messages.push(message); // Insert
       }
+
+      await idbSet(historyKey, messages);
+
+      const existingMeta = (await idbGet(metaKey)) || {};
+      const meta = {
+        title: title || existingMeta.title || "New Chat",
+        lastModified: Date.now(),
+      };
+      await idbSet(metaKey, meta);
     }
   },
 

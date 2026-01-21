@@ -40,6 +40,23 @@ apiClient.interceptors.response.use(
 );
 
 export const apiService = {
+  // --- AI Tools ---
+  async generateImage(prompt) {
+    try {
+      console.log("[Frontend] Generating image for prompt:", prompt);
+      const response = await apiClient.post('/image/generate', { prompt });
+      console.log("[Frontend] Image generation success:", response.data);
+      return response.data;
+    } catch (error) {
+      console.error("Failed to generate image:", error);
+      if (error.response) {
+        console.error("Error Status:", error.response.status);
+        console.error("Error Data:", error.response.data);
+      }
+      throw error;
+    }
+  },
+
   // --- Auth ---
   async login(credentials) {
     try {

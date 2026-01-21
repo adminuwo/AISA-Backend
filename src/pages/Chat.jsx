@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect, Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router';
 import { AnimatePresence, motion } from 'motion/react';
-import { Send, Bot, User, Sparkles, Plus, Monitor, ChevronDown, History, Paperclip, X, FileText, Image as ImageIcon, Cloud, HardDrive, Edit2, Download, Mic, Wand2, Eye, FileSpreadsheet, Presentation, File, MoreVertical, Trash2, Check, Camera, Video, Copy, ThumbsUp, ThumbsDown, Share } from 'lucide-react';
+import { Send, Bot, User, Sparkles, Plus, Monitor, ChevronDown, History, Paperclip, X, FileText, Image as ImageIcon, Cloud, HardDrive, Edit2, Download, Mic, Wand2, Eye, FileSpreadsheet, Presentation, File, MoreVertical, Trash2, Check, Camera, Video, Copy, ThumbsUp, ThumbsDown, Share, Loader2, RotateCcw } from 'lucide-react';
 import { renderAsync } from 'docx-preview';
 import * as XLSX from 'xlsx';
 import { Menu, Transition, Dialog } from '@headlessui/react';
 import { generateChatResponse } from '../services/geminiService';
 import { chatStorageService } from '../services/chatStorageService';
+import { apiService } from '../services/apiService';
 import { useLanguage } from '../context/LanguageContext';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -119,6 +120,8 @@ const Chat = () => {
   const recognitionRef = useRef(null);
   const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
   const [selectedToolType, setSelectedToolType] = useState(null);
+  const [isDeepSearch, setIsDeepSearch] = useState(false);
+  const [isImageMode, setIsImageMode] = useState(false);
 
   // Close menu on click outside
   useEffect(() => {
@@ -148,6 +151,7 @@ const Chat = () => {
     // Validate file type
     const validTypes = [
       'image/',
+      'video/',
       'application/pdf',
       'application/msword',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -269,16 +273,16 @@ const Chat = () => {
       }
     };
     loadSessions();
-  }, [messages]);
+  }, [sessionId]); // Only reload if sessionId change or on mount
 
-  const isNavigatingRef = useRef(false);
+  const isNavigatingRef = useRef(null); // Stores sessionId we are navigating to
 
   useEffect(() => {
     const initChat = async () => {
       // If we just navigated from 'new' to a real ID in handleSendMessage,
       // don't clear the messages we already have in state.
-      if (isNavigatingRef.current) {
-        isNavigatingRef.current = false;
+      if (isNavigatingRef.current === sessionId) {
+        isNavigatingRef.current = null;
         return;
       }
 
@@ -338,7 +342,12 @@ const Chat = () => {
     if (isSendingRef.current) return;
 
     // Use overrideContent if provided (for instant voice sending), otherwise fallback to state
-    const contentToSend = typeof overrideContent === 'string' ? overrideContent : inputValue.trim();
+    let contentToSend = typeof overrideContent === 'string' ? overrideContent : inputValue.trim();
+
+    // Prepend /image command if in image mode
+    if (isImageMode && !contentToSend.startsWith('/image') && !contentToSend.startsWith('/imagine')) {
+      contentToSend = `/image ${contentToSend}`;
+    }
 
     if ((!contentToSend && filePreviews.length === 0) || isLoading) return;
 
@@ -374,12 +383,13 @@ const Chat = () => {
                   p.type.includes('powerpoint') || p.type.includes('presentation') ? 'pptx' : 'file'
         })),
         agentName: activeAgent.agentName || activeAgent.name,
-        agentCategory: activeAgent.category
+        agentCategory: activeAgent.category,
+        isDeepSearch: isDeepSearch // Store Deep Search state
       };
-
-      const updatedMessages = [...messages, userMsg];
-      setMessages(updatedMessages);
+      setMessages(prev => [...prev, userMsg]);
       setInputValue('');
+      setIsImageMode(false);
+      setIsDeepSearch(false);
       handleRemoveFile(); // Clear file after sending
       setIsLoading(true);
 
@@ -388,10 +398,67 @@ const Chat = () => {
         await chatStorageService.saveMessage(activeSessionId, userMsg, title);
 
         if (isFirstMessage) {
-          isNavigatingRef.current = true;
+          isNavigatingRef.current = activeSessionId;
           setCurrentSessionId(activeSessionId);
           navigate(`/dashboard/chat/${activeSessionId}`, { replace: true });
+
+          // Manually reload sessions for the sidebar since we created a new one
+          const sessionsData = await chatStorageService.getSessions();
+          setSessions(sessionsData);
         }
+
+
+        // --- IMAGE GENERATION HANDLER ---
+        // Check if user wants to generate an image
+        const imageTrigger = userMsg.content.match(/^(\/image|\/imagine|generate image|create image)\s+(.+)/i);
+
+        if (imageTrigger) {
+          const prompt = imageTrigger[2];
+
+          // Add user message to UI immediately
+          // (Already added above)
+
+          // Simulate "Thinking..." phase
+          const thinkingId = (Date.now() + 1).toString();
+          setMessages(prev => [...prev, {
+            id: thinkingId,
+            role: 'model',
+            content: `Generating image for: "**${prompt}**"...`,
+            timestamp: Date.now() + 100,
+            isProcessing: true
+          }]);
+
+          try {
+            const response = await apiService.generateImage(prompt);
+            const imageUrl = response.data; // Expecting { success: true, data: "url" } or response.data if generic
+
+            // Replace "Thinking..." with actual Image
+            const imageMarkdown = `Here is your generated image:\n\n![${prompt}](${imageUrl})`;
+
+            setMessages(prev => prev.map(m => m.id === thinkingId ? {
+              ...m,
+              content: imageMarkdown
+            } : m));
+
+            await chatStorageService.saveMessage(activeSessionId, {
+              id: thinkingId,
+              role: 'model',
+              content: imageMarkdown,
+              timestamp: Date.now() + 100
+            });
+
+          } catch (imageError) {
+            setMessages(prev => prev.map(m => m.id === thinkingId ? {
+              ...m,
+              content: `❌ Failed to generate image. Please try again.`
+            } : m));
+          }
+
+          setIsLoading(false);
+          isSendingRef.current = false;
+          return; // EXIT FUNCTION EARLY
+        }
+        // --------------------------------
 
         // Send to AI for response
         const caps = getAgentCapabilities(activeAgent.agentName, activeAgent.category);
@@ -451,11 +518,20 @@ REQUIRED OUTPUT FORMAT:
 (Repeat strictly for ALL ${filePreviews.length} files)
 
 ### RESPONSE FORMATTING RULES (STRICT):
-1.  **Structure**: ALWAYS use **Bold Headings** and **Bullet Points**. Avoid long paragraphs.
-2.  **Point-wise Answers**: Break down complex topics into simple points.
-3.  **Highlights**: Bold key terms and important concepts.
-4.  **Summary**: Include a "One-line summary" or "Simple definition" at the start or end where appropriate.
-5.  **Emojis**: Use relevant emojis.
+${isDeepSearch ? `
+1.  **🚀 DEEP SEARCH MODE**:
+    - Provide a **Detailed Analysis** (Target: 400-600 words).
+    - Cover the topic thoroughly with context and examples.
+    - Use clear sections/headings.
+` : `
+1.  **Standard Response (DEFAULT)**:
+    - Provide a **Complete Explanation** (Target: 150-200 words).
+    - Explain the concept clearly in 2-3 paragraphs.
+    - Not too short (no one-liners), Not too long (no essays).
+`}
+
+3.  **Highlights**: Bold key terms.
+4.  **Emojis**: Use relevant emojis sparingly.
 
 ${caps.canUploadImages ? `IMAGE ANALYSIS CAPABILITIES:
 - You have the ability to see and analyze images provided by the user.
@@ -467,7 +543,13 @@ ${caps.canUploadDocs ? `DOCUMENT ANALYSIS CAPABILITIES:
 ${activeAgent.instructions ? `SPECIFIC AGENT INSTRUCTIONS:
 ${activeAgent.instructions}` : ''}
 `;
-        const aiResponseText = await generateChatResponse(messages, userMsg.content, SYSTEM_INSTRUCTION, userMsg.attachments, currentLang);
+
+        // Prepend instruction to the prompt based on mode
+        const promptToSend = isDeepSearch
+          ? `(MANDATORY: Provide a DEEP and DETAILED response, but keep it FOCUSED. Do not ramble. Target approx 400-600 words. Use sections.)\n\n${userMsg.content}`
+          : `(MANDATORY: Provide a STANDARD, HELPFUL response. Explain clearly in 2-3 paragraphs. Target approx 150-200 words.)\n\n${userMsg.content}`;
+
+        const aiResponseText = await generateChatResponse(messages, promptToSend, SYSTEM_INSTRUCTION, userMsg.attachments, currentLang);
 
         // Check for multiple file analysis headers to split into separate cards
         const delimiter = '---SPLIT_RESPONSE---';
@@ -535,6 +617,32 @@ ${activeAgent.instructions}` : ''}
     } finally {
       setIsLoading(false);
       isSendingRef.current = false;
+    }
+  };
+
+  const handleUndo = async () => {
+    if (messages.length === 0) return;
+
+    // Find the last user message index
+    const lastUserIdx = [...messages].reverse().findIndex(m => m.role === 'user');
+    if (lastUserIdx === -1) return;
+
+    const actualIdx = messages.length - 1 - lastUserIdx;
+    const messagesToRemove = messages.slice(actualIdx);
+    const restoredPrompt = messages[actualIdx].content;
+
+    const removeIds = messagesToRemove.map(m => m.id);
+    setMessages(prev => prev.filter(m => !removeIds.includes(m.id)));
+
+    if (restoredPrompt) setInputValue(restoredPrompt);
+
+    try {
+      for (const msg of messagesToRemove) {
+        await chatStorageService.deleteMessage(currentSessionId, msg.id);
+      }
+      toast.success("Last message undone");
+    } catch (error) {
+      console.error("Undo error:", error);
     }
   };
 
@@ -1685,7 +1793,7 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                     {msg.role === 'user' ? (
                       <User className="w-4 h-4 text-white" />
                     ) : (
-                      <Bot className="w-4 h-4 text-primary" />
+                      <Bot className={`w-4 h-4 ${msg.isDeepSearch ? 'text-purple-600' : 'text-primary'}`} />
                     )}
                   </div>
 
@@ -1699,6 +1807,20 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                         : `bg-surface border border-border text-maintext rounded-tl-none ${msg.id === typingMessageId ? 'ai-typing-glow ai-typing-shimmer outline outline-offset-1 outline-primary/20' : ''}`
                         }`}
                     >
+                      {/* Deep Search Badge in History */}
+                      {msg.isDeepSearch && (
+                        <div className="mb-2 flex items-center gap-1.5 bg-white/10 border border-white/20 text-white px-2 py-0.5 rounded-lg text-[10px] font-bold w-fit underline decoration-white/50 underline-offset-2">
+                          <Wand2 className="w-3 h-3 text-white" />
+                          <span>DEEP SEARCH</span>
+                        </div>
+                      )}
+
+                      {msg.isProcessing && (
+                        <div className="flex items-center gap-2 mb-2 text-primary">
+                          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                          <span className="text-xs font-medium animate-pulse text-primary">Processing...</span>
+                        </div>
+                      )}
 
                       {/* Attachment Display */}
                       {(msg.attachments || msg.attachment) && (
@@ -2034,6 +2156,16 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                   {/* Hover Actions - User Only (AI has footer) */}
                   {msg.role === 'user' && (
                     <div className={`flex items-center gap-1 transition-opacity duration-200 self-start mt-2 mr-0 flex-row-reverse ${activeMessageId === msg.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
+                      {/* Undo Action (Only for the last user interaction) */}
+                      {msg.role === 'user' && (messages[messages.length - 1]?.id === msg.id || (messages[messages.length - 1]?.role === 'model' && messages[messages.length - 2]?.id === msg.id)) && (
+                        <button
+                          onClick={handleUndo}
+                          className="p-1.5 text-subtext hover:text-primary hover:bg-surface rounded-full transition-colors"
+                          title="Undo Last"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+                      )}
                       <button
                         onClick={() => handleCopyMessage(msg.content || msg.text)}
                         className="p-1.5 text-subtext hover:text-primary hover:bg-surface rounded-full transition-colors"
@@ -2117,6 +2249,10 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                         <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl overflow-hidden border border-border/50 bg-black/5">
                           <img src={preview.url} alt="Preview" className="w-full h-full object-cover transition-transform group-hover:scale-105" />
                         </div>
+                      ) : preview.type.startsWith('video/') ? (
+                        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-red-500/10 rounded-xl flex items-center justify-center border border-red-500/20 shadow-sm">
+                          <Video className="w-7 h-7 text-red-600" />
+                        </div>
                       ) : (
                         <div className="w-14 h-14 sm:w-16 sm:h-16 bg-primary/10 rounded-xl flex items-center justify-center border border-primary/20 shadow-sm">
                           <FileText className="w-7 h-7 text-primary" />
@@ -2175,7 +2311,7 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                 onChange={handleFileSelect}
                 multiple
                 className="hidden"
-                accept="image/*"
+                accept="image/*,video/*"
               />
               <input
                 id="camera-upload"
@@ -2225,7 +2361,7 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                         </label>
                       )}
 
-                      {getAgentCapabilities(activeAgent.agentName, activeAgent.category).canUploadDocs && (
+                      {(getAgentCapabilities(activeAgent.agentName, activeAgent.category).canUploadDocs && (
                         <label
                           htmlFor="drive-upload"
                           onClick={() => setIsAttachMenuOpen(false)}
@@ -2238,7 +2374,45 @@ For "Remix" requests with an attachment, analyze the attached image, then create
                             <span className="text-sm font-medium text-maintext group-hover:text-primary transition-colors">Add from Drive</span>
                           </div>
                         </label>
-                      )}
+                      ))}
+
+                      {/* Deep Search Option */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDeepSearch(true);
+                          if (inputRef.current) inputRef.current.focus();
+                          setIsAttachMenuOpen(false);
+                          toast.success("Deep Search Activated");
+                        }}
+                        className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-primary/5 rounded-xl transition-all group cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center group-hover:border-primary/30 group-hover:bg-primary/10 transition-colors shrink-0">
+                          <Wand2 className="w-4 h-4 text-subtext group-hover:text-primary transition-colors" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="text-sm font-medium text-maintext group-hover:text-primary transition-colors">Deep Search</span>
+                        </div>
+                      </button>
+
+                      {/* Image Generation Option */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsImageMode(true);
+                          setInputValue('');
+                          if (inputRef.current) inputRef.current.focus();
+                          setIsAttachMenuOpen(false);
+                        }}
+                        className="w-full text-left px-3 py-2.5 flex items-center gap-3 hover:bg-primary/5 rounded-xl transition-all group cursor-pointer"
+                      >
+                        <div className="w-8 h-8 rounded-full bg-surface border border-border flex items-center justify-center group-hover:border-primary/30 group-hover:bg-primary/10 transition-colors shrink-0">
+                          <Sparkles className="w-4 h-4 text-subtext group-hover:text-primary transition-colors" />
+                        </div>
+                        <div className="flex-1">
+                          <span className="text-sm font-medium text-maintext group-hover:text-primary transition-colors">Create Image</span>
+                        </div>
+                      </button>
                     </div>
                   </motion.div>
                 )}
@@ -2256,20 +2430,52 @@ For "Remix" requests with an attachment, analyze the attached image, then create
               </button>
 
               <div className="relative flex-1">
+                {isImageMode && (
+                  <div
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="absolute left-4 top-3 md:top-4 z-20 flex items-center gap-1.5 bg-blue-500 text-white px-2.5 py-0.5 rounded-lg text-xs font-bold animate-in zoom-in-95 select-none shadow-lg shadow-blue-500/20 cursor-pointer hover:opacity-90 active:scale-95 transition-all"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    <span>GENERATE IMAGE</span>
+                  </div>
+                )}
+                {isDeepSearch && (
+                  <div className="absolute left-4 top-3 md:top-4 z-20 flex items-center gap-1.5 bg-purple-600 text-white px-2.5 py-0.5 rounded-lg text-xs font-bold animate-in zoom-in-95 select-none shadow-lg shadow-purple-600/20">
+                    <Wand2 className="w-3 h-3" />
+                    <span>DEEP SEARCH</span>
+                  </div>
+                )}
                 <textarea
                   ref={inputRef}
                   value={inputValue}
                   onChange={(e) => {
-                    setInputValue(e.target.value);
+                    const val = e.target.value;
+                    // Detect /image command
+                    if (val.toLowerCase().startsWith('/image ') || val.toLowerCase().startsWith('/imagine ')) {
+                      setIsImageMode(true);
+                      setInputValue('');
+                    } else {
+                      setInputValue(val);
+                    }
                     e.target.style.height = 'auto';
                     e.target.style.height = `${e.target.scrollHeight}px`;
                   }}
-                  onKeyDown={handleKeyDown}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Backspace' && inputValue === '' && isImageMode) {
+                      e.preventDefault();
+                      setIsImageMode(false);
+                    }
+                    handleKeyDown(e);
+                  }}
                   onPaste={handlePaste}
-                  placeholder="Ask AISA..."
+                  placeholder={isImageMode ? "Describe the image you want to create..." : "Ask AISA..."}
                   rows={1}
-                  className={`w-full bg-surface border border-border rounded-2xl py-2 md:py-3 pl-4 sm:pl-5 text-sm md:text-base text-maintext placeholder-subtext focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm transition-all resize-none overflow-y-auto custom-scrollbar ${inputValue.trim() ? 'pr-20 md:pr-24' : 'pr-32 md:pr-40'}`}
-                  style={{ minHeight: '40px', maxHeight: '150px' }}
+                  className={`w-full bg-surface border border-border rounded-2xl py-2 md:py-3 sm:pl-5 text-sm md:text-base text-maintext placeholder-subtext focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary shadow-sm transition-all resize-none overflow-y-auto custom-scrollbar ${inputValue.trim() ? 'pr-20 md:pr-24' : 'pr-32 md:pr-40'}`}
+                  style={{
+                    minHeight: '40px',
+                    maxHeight: '150px',
+                    paddingLeft: isImageMode ? '160px' : (isDeepSearch ? '140px' : '20px')
+                  }}
                 />
                 <div className="absolute right-2 inset-y-0 flex items-center gap-0 sm:gap-1 z-10">
                   {isListening && (
