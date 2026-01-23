@@ -24,7 +24,7 @@ import voiceRoutes from './routes/voiceRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
 import imageRoutes from './routes/image.routes.js';
 import videoRoutes from './routes/videoRoutes.js';
-// import paymentRoutes from './routes/paymentRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 const app = express();
@@ -104,6 +104,7 @@ app.use('/api/reminders', reminderRoutes);
 
 // Dashboard
 app.use('/api', dashboardRoutes);
+app.use('/api/payment', paymentRoutes);
 
 // Image Generation
 app.use('/api/image', imageRoutes);

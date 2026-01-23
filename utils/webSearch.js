@@ -83,12 +83,12 @@ export function extractSearchQuery(message) {
 /**
  * Process web search results
  */
-export function processSearchResults(searchData) {
+export function processSearchResults(searchData, limit = 5) {
     if (!searchData || !searchData.results || searchData.results.length === 0) {
         return null;
     }
 
-    const results = searchData.results.slice(0, 5); // Top 5 results
+    const results = searchData.results.slice(0, limit); // Dynamic limit
 
     return {
         snippets: results.map(r => ({

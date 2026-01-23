@@ -8,13 +8,11 @@ const transactionSchema = mongoose.Schema({
     },
     agentId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'Agent',
-        required: true
+        ref: 'Agent'
     },
     vendorId: {
         type: mongoose.Schema.Types.ObjectId,
-        ref: 'User',
-        required: true
+        ref: 'User'
     },
     buyerId: {
         type: mongoose.Schema.Types.ObjectId,
@@ -35,9 +33,12 @@ const transactionSchema = mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Success', 'Pending', 'Failed'],
+        enum: ['Success', 'Pending', 'Failed', 'success'],
         default: 'Success'
-    }
+    },
+    plan: String,
+    orderId: String,
+    paymentId: String
 }, { timestamps: true });
 
 export default mongoose.model("Transaction", transactionSchema);
