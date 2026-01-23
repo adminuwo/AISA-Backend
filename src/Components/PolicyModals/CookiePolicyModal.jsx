@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Cookie, Settings, BarChart3, Shield, Smartphone } from 'lucide-react';
+import { X, Cookie, Settings2, BarChart3, Shield, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { name } from '../../constants';
 

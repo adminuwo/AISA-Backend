@@ -81,10 +81,8 @@ const Landing = () => {
                     onHoverStart={() => setIsBrandHovered(true)}
                     onHoverEnd={() => setIsBrandHovered(false)}
                 >
-                    <img src={logo} alt="Logo" className="w-10 h-10 md:w-14 md:h-14 object-contain group-hover:rotate-12 transition-transform duration-300" />
-                    <span className="text-xl md:text-3xl font-black tracking-tighter text-maintext relative z-10">
-                        {name} <sup className="text-xs">TM</sup>
-                    </span>
+                    <img src="/logo/Logo.svg" alt="Logo" className="w-14 h-14 md:w-20 md:h-20 object-contain group-hover:rotate-12 transition-transform duration-300" />
+                    {/* Brand text removed as per user request */}
 
                     {/* Popup Animation */}
                     <AnimatePresence>
@@ -264,7 +262,7 @@ const Landing = () => {
                         {/* Brand Column */}
                         <div className="space-y-6">
                             <div className="flex items-center gap-3">
-                                <img src={logo} alt="Logo" className="w-12 h-12 object-contain" />
+                                <img src="/logo/Logo.svg" alt="Logo" className="w-12 h-12 object-contain" />
                                 <span className="text-2xl font-black tracking-tighter text-maintext">{name} <sup className="text-xs">TM</sup></span>
                             </div>
                             <div className="flex items-center gap-3 flex-wrap">

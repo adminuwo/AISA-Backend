@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { apiService } from '../../services/apiService';
 import TaskModal from './TaskModal';
-import { Plus, CheckCircle, Clock, Calendar as CalendarIcon, AlertTriangle, Trash2, Mic, Settings, Menu as MenuIcon } from 'lucide-react';
+import { Plus, CheckCircle, Clock, Calendar as CalendarIcon, AlertTriangle, Trash2, Mic, Settings2, Menu as MenuIcon } from 'lucide-react';
 import { useRecoilState } from 'recoil';
 import { toggleState } from '../../userStore/userData';
 import toast from 'react-hot-toast';

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlertCircle, Server, ShieldAlert, ToggleLeft, ToggleRight, Settings } from 'lucide-react';
+import { AlertCircle, Server, ShieldAlert, ToggleLeft, ToggleRight, Settings2 } from 'lucide-react';
 
 const PlatformSettings = () => {
     const [maintenance, setMaintenance] = useState(false);

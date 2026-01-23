@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router';
-import { Cookie, Settings, BarChart3, Shield, Smartphone, ArrowLeft } from 'lucide-react';
+import { Cookie, Settings2, BarChart3, Shield, Smartphone, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { name } from '../constants';
 

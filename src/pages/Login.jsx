@@ -54,10 +54,10 @@ const Login = () => {
 
         {/* Header */}
         <div className=" text-center">
-          <div className="inline-block rounded-full  w-25">
-            <img src={logo} alt="" />
+          <div className="inline-block rounded-full w-25">
+            <img src="/logo/Logo.svg" alt="AISA Logo" className="w-36 h-36 mx-auto" />
           </div>
-          <h2 className="text-3xl font-bold text-maintext mb-2">Welcome Back</h2>
+          <h2 className="text-3xl font-bold text-maintext mb-2 -mt-8">Welcome Back</h2>
           <p className="text-subtext">Sign in to continue to AISA<sup>TM</sup></p>
         </div>
 

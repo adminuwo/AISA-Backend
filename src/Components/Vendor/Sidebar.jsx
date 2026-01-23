@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, Box, DollarSign, Settings, LogOut, Users, ShieldAlert, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Box, DollarSign, Settings2, LogOut, Users, ShieldAlert, Sun, Moon } from 'lucide-react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { useTheme } from '../../context/ThemeContext';
 

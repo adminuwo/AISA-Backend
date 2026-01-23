@@ -35,6 +35,7 @@ import { Sun, Moon } from 'lucide-react';
 import { chatStorageService } from '../../services/chatStorageService';
 import { useParams } from 'react-router';
 import toast from 'react-hot-toast';
+import ProfileSettingsDropdown from '../ProfileSettingsDropdown/ProfileSettingsDropdown.jsx';
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { t, language, region, regionFlags } = useLanguage();
@@ -345,113 +346,18 @@ const Sidebar = ({ isOpen, onClose }) => {
                 </div>
               </button>
 
-              {/* Dropdown Menu */}
-              {isProfileMenuOpen && (
-                <div className="absolute bottom-full left-0 right-0 mb-2 bg-card border border-border rounded-xl shadow-xl overflow-hidden z-50">
-                  {/* User Info Header */}
-                  <div className="p-3 border-b border-border bg-secondary/50">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-bold text-sm uppercase shrink-0">
-                        {user.name ? user.name.charAt(0).toUpperCase() : "U"}
-                      </div>
-                      <div className="overflow-hidden flex-1">
-                        <p className="text-sm font-bold text-maintext truncate">{user.name}</p>
-                        <p className="text-xs text-subtext truncate">@{user.email?.split('@')[0]}</p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Menu Items */}
-                  <div className="p-1">
-                    <button
-                      onClick={() => {
-                        toast('Upgrade plan coming soon!');
-                        setIsProfileMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <Sparkles className="w-4 h-4 text-subtext group-hover:text-primary" />
-                      <span className="flex-1 text-left">Upgrade plan</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        navigate(AppRoute.PROFILE, { state: { activeTab: 'personalization' } });
-                        setIsProfileMenuOpen(false);
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <User className="w-4 h-4 text-subtext group-hover:text-primary" />
-                      <span className="flex-1 text-left">Personalization</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        navigate(AppRoute.PROFILE, { state: { activeTab: 'general' } });
-                        setIsProfileMenuOpen(false);
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <LayoutGrid className="w-4 h-4 text-subtext group-hover:text-primary" />
-                      <span className="flex-1 text-left">General</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        navigate(AppRoute.PROFILE, { state: { activeTab: 'notifications' } });
-                        setIsProfileMenuOpen(false);
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <Bell className="w-4 h-4 text-subtext group-hover:text-primary" />
-                      <span className="flex-1 text-left">Notifications</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        navigate(AppRoute.PROFILE, { state: { activeTab: 'security' } });
-                        setIsProfileMenuOpen(false);
-                        onClose();
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <Shield className="w-4 h-4 text-subtext group-hover:text-primary" />
-                      <span className="flex-1 text-left">Security</span>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        setIsFaqOpen(true);
-                        setIsProfileMenuOpen(false);
-                      }}
-                      className="w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-maintext hover:bg-secondary group"
-                    >
-                      <div className="flex items-center gap-3">
-                        <HelpCircle className="w-4 h-4 text-subtext group-hover:text-primary" />
-                        <span>Help</span>
-                      </div>
-                      <ChevronRight className="w-3 h-3 text-subtext" />
-                    </button>
-                  </div>
-
-                  {/* Logout */}
-                  <div className="border-t border-border p-1">
-                    <button
-                      onClick={() => {
-                        handleLogout();
-                        setIsProfileMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors text-red-500 hover:bg-red-500/5 group"
-                    >
-                      <LogOut className="w-4 h-4" />
-                      <span className="flex-1 text-left">Log out</span>
-                    </button>
-                  </div>
-                </div>
-              )}
+              {/* Dropdown Menu - Replaced with Personalization System */}
+              <AnimatePresence>
+                {isProfileMenuOpen && (
+                  <ProfileSettingsDropdown
+                    onClose={() => setIsProfileMenuOpen(false)}
+                    onLogout={() => {
+                      handleLogout();
+                      setIsProfileMenuOpen(false);
+                    }}
+                  />
+                )}
+              </AnimatePresence>
             </div>
           ) : (
             /* Guest / Login State */
