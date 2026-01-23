@@ -107,9 +107,9 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
     throw new Error('Vertex AI did not return a valid video payload.');
 
   } catch (error) {
-    logger.warn(`[VERTEX VIDEO ERROR] ${error.message}. Falling back to Pollinations.`);
-    // Fallback: Pollinations
-    return await generateVideoWithPollinations(prompt, duration, quality);
+    throw error;
+    // Fallback deprecated by user request
+    // return await generateVideoWithPollinations(prompt, duration, quality);
   }
 };
 
@@ -147,7 +147,10 @@ const pollReplicateResult = async (predictionId, apiKey, maxAttempts = 60) => {
 export const generateVideoWithPollinations = async (prompt, duration, quality) => {
   try {
     // Pollinations offers free video generation via API
-    const videoUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${quality === 'high' ? 1920 : 1280}&height=${quality === 'high' ? 1080 : 720}&video=true`;
+    // Pollinations offers free generation via API
+    // Note: Video generation endpoint is deprecated/moved. Using high-quality image as preview.
+    // Using the /p/ endpoint which is more reliable for the new version
+    const videoUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}`;
 
     logger.info(`[POLLINATIONS VIDEO] Generated: ${videoUrl}`);
     return videoUrl;
