@@ -190,21 +190,23 @@ router.post("/", verifyToken, async (req, res) => {
       }
     }
 
-    // Web Search: Check if query requires real-time information
+    // Web Search: Check if query requires real-time information or Deep Search is enabled
     let searchResults = null;
     let webSearchInstruction = '';
+    const isDeepSearch = systemInstruction && systemInstruction.includes('DEEP SEARCH MODE ENABLED');
 
-    if (requiresWebSearch(content)) {
-      console.log('[WEB SEARCH] Query requires real-time information');
+    if (requiresWebSearch(content) || isDeepSearch) {
+      console.log(`[WEB SEARCH] Query requires real-time information${isDeepSearch ? ' (Forced by Deep Search)' : ''}`);
 
       try {
         const searchQuery = extractSearchQuery(content);
         console.log(`[WEB SEARCH] Searching for: "${searchQuery}"`);
 
-        const rawSearchData = await performWebSearch(searchQuery, 5);
+        const rawSearchData = await performWebSearch(searchQuery, isDeepSearch ? 10 : 5);
 
         if (rawSearchData) {
-          searchResults = processSearchResults(rawSearchData);
+          const limit = isDeepSearch ? 10 : 5;
+          searchResults = processSearchResults(rawSearchData, limit);
           console.log(`[WEB SEARCH] Found ${searchResults.snippets.length} results`);
 
           // Generate system instruction with search results
@@ -562,21 +564,30 @@ router.delete('/:sessionId/message/:messageId', verifyToken, async (req, res) =>
     const msgsToDelete = [messageId];
     if (msgIndex + 1 < session.messages.length) {
       const nextMsg = session.messages[msgIndex + 1];
-      if (nextMsg.role === 'model') {
+      if (nextMsg && nextMsg.role === 'model' && nextMsg.id) {
         msgsToDelete.push(nextMsg.id);
       }
     }
 
-    const updatedSession = await ChatSession.findOneAndUpdate(
-      { sessionId },
-      { $pull: { messages: { id: { $in: msgsToDelete } } } },
-      { new: true }
-    );
+    // Filter out any undefined/null IDs just in case
+    const validMsgsToDelete = msgsToDelete.filter(id => id);
 
-    res.json(updatedSession);
+    console.log(`[DELETE] Session: ${sessionId}, Removing IDs:`, validMsgsToDelete);
+
+    if (validMsgsToDelete.length > 0) {
+      await ChatSession.findOneAndUpdate(
+        { sessionId },
+        { $pull: { messages: { id: { $in: validMsgsToDelete } } } }
+      );
+    }
+
+    res.json({ success: true, removedCount: validMsgsToDelete.length });
   } catch (err) {
-    console.error("Delete message error:", err);
-    res.status(500).json({ error: 'Failed to delete message' });
+    console.error(`[DELETE ERROR] Session: ${req.params.sessionId}, Msg: ${req.params.messageId}`, err);
+    res.status(500).json({
+      error: 'Failed to delete message',
+      details: err.message
+    });
   }
 });
 

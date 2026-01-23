@@ -53,6 +53,52 @@ route.put("/", verifyToken, async (req, res) => {
     }
 })
 
+// PUT /api/user/personalizations - Update personalization preferences
+route.put("/personalizations", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { personalizations } = req.body;
+
+        if (!personalizations) {
+            return res.status(400).json({ error: "No personalizations provided" });
+        }
+
+        const user = await userModel.findById(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        // Deep merge or specific section update? Let's do a shallow merge for now, 
+        // or a deep merge if we want to update nested fields without clobbering.
+        // For simplicity in this implementation, we'll assume the frontend sends the relevant section or the whole object.
+
+        // Using object.assign or spread for the sections
+        user.personalizations = { ...user.personalizations, ...personalizations };
+
+        await user.save();
+        res.status(200).json(user.personalizations);
+    } catch (error) {
+        console.error("Error updating personalizations:", error);
+        res.status(500).json({ msg: "Something went wrong" });
+    }
+});
+
+// POST /api/user/personalizations/reset - Reset personalization preferences to defaults
+route.post("/personalizations/reset", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const user = await userModel.findById(userId);
+        if (!user) return res.status(404).json({ error: "User not found" });
+
+        // Reset to empty object, Mongoose defaults will take over on next fetch or we can manually set them
+        user.personalizations = {};
+        await user.save();
+
+        res.status(200).json(user.personalizations);
+    } catch (error) {
+        console.error("Error resetting personalizations:", error);
+        res.status(500).json({ msg: "Something went wrong" });
+    }
+});
+
 // GET /api/user/all - Admin only, fetch all users with details
 route.get("/all", verifyToken, async (req, res) => {
     try {
