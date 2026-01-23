@@ -14,17 +14,63 @@ export const usePersonalization = () => {
     return context;
 };
 
+const DEFAULT_PREFERENCES = {
+    general: {
+        language: 'English',
+        theme: 'System',
+        fontSize: 'Medium',
+        responseSpeed: 'Balanced',
+        screenReader: false,
+        highContrast: false
+    },
+    notifications: {
+        newMessage: true,
+        aiTips: true,
+        productUpdates: true,
+        emailAlerts: false,
+        soundAlerts: true
+    },
+    personalization: {
+        baseStyle: 'Default',
+        warmth: 'Medium',
+        enthusiasm: 'Medium',
+        formality: 'Medium',
+        creativity: 'Medium',
+        structuredResponses: false,
+        bulletPoints: false,
+        customInstructions: '',
+        emojiUsage: 'Moderate'
+    },
+    apps: {},
+    dataControls: {
+        chatHistory: 'On',
+        trainingDataUsage: true
+    },
+    security: {
+        twoFactor: false
+    },
+    parentalControls: {
+        enabled: false,
+        ageCategory: 'Adult',
+        contentFilter: false,
+        timeLimits: false
+    },
+    account: {
+        nickname: ''
+    }
+};
+
 export const PersonalizationProvider = ({ children }) => {
     const [personalizations, setPersonalizationsState] = useState(() => {
         const saved = localStorage.getItem('personalizations');
-        return saved ? JSON.parse(saved) : null;
+        return saved ? JSON.parse(saved) : DEFAULT_PREFERENCES;
     });
     const [isLoading, setIsLoading] = useState(false);
 
     const user = getUserData();
 
     useEffect(() => {
-        if (user?.token && !personalizations) {
+        if (user?.token) {
             fetchPersonalizations();
         }
     }, [user?.token]);
@@ -39,9 +85,14 @@ export const PersonalizationProvider = ({ children }) => {
             if (res.data.personalizations) {
                 setPersonalizationsState(res.data.personalizations);
                 localStorage.setItem('personalizations', JSON.stringify(res.data.personalizations));
+            } else {
+                // If backend returns user but no personalizations yet, merge defaults
+                setPersonalizationsState(prev => prev || DEFAULT_PREFERENCES);
             }
         } catch (error) {
             console.error('Failed to fetch personalizations', error);
+            // Ensure we at least have defaults
+            setPersonalizationsState(prev => prev || DEFAULT_PREFERENCES);
         } finally {
             setIsLoading(false);
         }

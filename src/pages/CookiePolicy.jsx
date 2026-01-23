@@ -27,7 +27,7 @@ const CookiePolicy = () => {
             ]
         },
         {
-            icon: Settings,
+            icon: Settings2,
             title: "Types of Cookies We Use",
             content: [
                 {

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import {
     User, Mail, Shield, Smartphone, Bot, MessageSquare,
     Edit2, Check, X, Camera, Calendar, Sparkles, Zap,
-    CreditCard, Settings, Loader2
+    CreditCard, Settings2, Loader2
 } from 'lucide-react';
 import axios from 'axios';
 import { apis, AppRoute } from '../types';
@@ -228,7 +228,7 @@ const UserProfile = () => {
                     {/* Quick Actions */}
                     <div className="flex flex-col gap-3 w-full md:w-auto">
                         <button className="px-6 py-3 bg-secondary hover:bg-surface text-maintext border border-border rounded-xl font-semibold shadow-sm hover:shadow-md transition-all flex items-center justify-center gap-3 whitespace-nowrap">
-                            <Settings className="w-4 h-4" /> Account Settings
+                            <Settings2 className="w-4 h-4" /> Account Settings
                         </button>
                     </div>
                 </div>

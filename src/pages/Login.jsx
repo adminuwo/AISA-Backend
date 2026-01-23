@@ -37,9 +37,10 @@ const Login = () => {
       localStorage.setItem("token", res.data.token)
 
     }).catch((err) => {
-      console.log(err.response.data.error);
-      setError(true)
-      setMessage(err.response.data.error || "Somthing went Wrong")
+      console.error("Login error:", err);
+      setError(true);
+      const errorMessage = err.response?.data?.error || err.message || "Unable to connect to the server. Please check your internet connection and try again.";
+      setMessage(errorMessage);
     }).finally(() => {
       setLoading(false)
 

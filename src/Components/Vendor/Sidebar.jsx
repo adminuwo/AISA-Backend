@@ -20,7 +20,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         { name: 'Revenue & Payouts', icon: DollarSign, path: '/vendor/revenue' },
         { name: 'User Support', icon: Users, path: '/vendor/user-support' },
         { name: 'Admin Support', icon: ShieldAlert, path: '/vendor/admin-support' },
-        { name: 'Settings', icon: Settings, path: '/vendor/settings' },
+        { name: 'Settings', icon: Settings2, path: '/vendor/settings' },
     ];
 
     const isActive = (path) => {

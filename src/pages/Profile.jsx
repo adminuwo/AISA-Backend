@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import {
     CircleUser,
-    Settings,
+    Settings2,
     Shield,
     Clock,
     Star,
@@ -269,7 +269,7 @@ const Profile = () => {
     const stats = [
         { label: t('totalSessions'), value: '128', icon: Clock, color: 'bg-blue-500/10 text-blue-600' },
         { label: t('proFeatures'), value: 'Active', icon: Star, color: 'bg-sky-400/10 text-sky-600' },
-        { label: t('accountSettings'), value: 'Configured', icon: Settings, color: 'bg-purple-500/10 text-purple-600' },
+        { label: t('accountSettings'), value: 'Configured', icon: Settings2, color: 'bg-purple-500/10 text-purple-600' },
         { label: t('credits'), value: <Infinity className="w-5 h-5" />, icon: Shield, color: 'bg-green-500/10 text-green-600' }
     ];
 
@@ -358,7 +358,7 @@ const Profile = () => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 relative">
                     <div className="bg-card border border-border rounded-[32px] p-8 space-y-8">
                         <div className="space-y-6">
-                            <h2 className="text-xl font-bold text-maintext flex items-center gap-2"><Settings className="w-5 h-5 text-primary" />{t.accountPreferences}</h2>
+                            <h2 className="text-xl font-bold text-maintext flex items-center gap-2"><Settings2 className="w-5 h-5 text-primary" />{t.accountPreferences}</h2>
                             <div className="space-y-4">
                                 {preferenceItems.map((item) => (
                                     <div key={item.key} className={`relative ${activeSection === item.key ? 'z-20' : 'z-0'}`}>

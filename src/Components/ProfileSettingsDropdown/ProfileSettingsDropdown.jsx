@@ -57,13 +57,13 @@ const ProfileSettingsDropdown = ({ onClose, onLogout }) => {
         switch (activeSection) {
             case 'general':
                 return (
-                    <div className="p-3 space-y-4 animate-in fade-in slide-in-from-top-1">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Language</label>
+                    <div className="p-3 space-y-5 animate-in fade-in slide-in-from-top-1">
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">App Language</label>
                             <select
                                 value={personalizations.general?.language || 'English'}
                                 onChange={(e) => updatePersonalization('general', { language: e.target.value })}
-                                className="w-full bg-secondary text-sm p-2 rounded-lg border border-border outline-none focus:border-primary"
+                                className="w-full bg-secondary text-sm p-2.5 rounded-lg border border-border outline-none focus:border-primary transition-colors"
                             >
                                 <option>English</option>
                                 <option>Hindi</option>
@@ -71,187 +71,215 @@ const ProfileSettingsDropdown = ({ onClose, onLogout }) => {
                                 <option>Auto-Detect</option>
                             </select>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Theme</label>
-                            <div className="flex gap-1">
-                                {['Light', 'Dark', 'System'].map(m => (
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Theme Preference</label>
+                            <div className="flex gap-2 p-1 bg-secondary rounded-xl">
+                                {['Light', 'System', 'Dark'].map(m => (
                                     <button
                                         key={m}
                                         onClick={() => {
                                             updatePersonalization('general', { theme: m });
                                             if (m !== 'System') setTheme(m.toLowerCase());
                                         }}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.general?.theme === m ? 'bg-primary text-white border-primary' : 'bg-secondary text-subtext border-border hover:border-primary/50'}`}
+                                        className={`flex-1 py-2 rounded-lg text-xs font-medium transition-all ${personalizations.general?.theme === m ? 'bg-white dark:bg-zinc-700 shadow-sm text-primary' : 'text-subtext hover:text-maintext'}`}
                                     >
                                         {m}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Response Speed</label>
-                            <div className="flex gap-1">
-                                {['Fast', 'Balanced', 'Detailed'].map(s => (
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Text Size</label>
+                            <div className="flex gap-2">
+                                {['Small', 'Medium', 'Large'].map(s => (
                                     <button
                                         key={s}
-                                        onClick={() => updatePersonalization('general', { responseSpeed: s })}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.general?.responseSpeed === s ? 'bg-primary text-white border-primary' : 'bg-secondary text-subtext border-border hover:border-primary/50'}`}
+                                        onClick={() => updatePersonalization('general', { fontSize: s })}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs border transition-all ${personalizations.general?.fontSize === s ? 'bg-primary text-white border-primary' : 'bg-transparent text-subtext border-border'}`}
                                     >
                                         {s}
                                     </button>
                                 ))}
                             </div>
                         </div>
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Accessibility</label>
+                            {renderSettingToggle('general', 'screenReader', 'Screen Reader Support', '')}
+                            {renderSettingToggle('general', 'highContrast', 'High Contrast Mode', '')}
+                        </div>
                     </div>
                 );
             case 'notifications':
                 return (
                     <div className="p-3 space-y-2 animate-in fade-in slide-in-from-top-1">
-                        {renderSettingToggle('notifications', 'newMessage', 'New messages', 'Alert me for new AI responses')}
-                        {renderSettingToggle('notifications', 'aiTips', 'AI tips & suggestions', 'Show context-aware help')}
-                        {renderSettingToggle('notifications', 'productUpdates', 'Product updates', 'News about AISA features')}
-                        {renderSettingToggle('notifications', 'soundAlerts', 'Sound alerts', 'Play sound on new messages')}
+                        {renderSettingToggle('notifications', 'newMessage', 'New Message Alerts', 'Get notified for every AI response')}
+                        {renderSettingToggle('notifications', 'aiTips', 'AI Tips & Suggestions', 'Receive helpful context-aware hints')}
+                        {renderSettingToggle('notifications', 'productUpdates', 'Product Announcements', 'Stay updated with new features')}
+                        {renderSettingToggle('notifications', 'emailAlerts', 'Email Notifications', 'Receive weekly summaries via email')}
+                        {renderSettingToggle('notifications', 'soundAlerts', 'Sound Effects', 'Play subtle sounds for actions')}
                     </div>
                 );
             case 'personalization':
                 return (
-                    <div className="p-3 space-y-4 animate-in fade-in slide-in-from-top-1">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Base Style</label>
-                            <div className="grid grid-cols-2 gap-1">
-                                {['Default', 'Professional', 'Friendly', 'Casual', 'Technical', 'Mentor-like'].map(style => (
+                    <div className="p-3 space-y-6 animate-in fade-in slide-in-from-top-1">
+                        {/* Base Style */}
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Base Persona</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {['Default', 'Professional', 'Friendly', 'Casual', 'Technical', 'Mentor'].map(style => (
                                     <button
                                         key={style}
                                         onClick={() => updatePersonalization('personalization', { baseStyle: style })}
-                                        className={`py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.personalization?.baseStyle === style ? 'bg-orange-500 text-white border-orange-500' : 'bg-secondary text-subtext border-border hover:border-orange-500/50'}`}
+                                        className={`py-2 px-3 rounded-lg text-xs font-medium text-left transition-all border ${personalizations.personalization?.baseStyle === style ? 'bg-primary/5 border-primary text-primary' : 'bg-transparent border-border text-subtext hover:border-border/80'}`}
                                     >
                                         {style}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                        <div className="space-y-3">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Emoji Usage</label>
-                            <div className="flex gap-1">
-                                {['None', 'Minimal', 'Moderate', 'Expressive'].map(e => (
-                                    <button
-                                        key={e}
-                                        onClick={() => updatePersonalization('personalization', { emojiUsage: e })}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.personalization?.emojiUsage === e ? 'bg-primary text-white border-primary' : 'bg-secondary text-subtext border-border hover:border-primary/50'}`}
-                                    >
-                                        {e}
-                                    </button>
-                                ))}
-                            </div>
+
+                        {/* Characteristics Sliders */}
+                        <div className="space-y-4 pt-2 border-t border-border/50">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Personality Traits</label>
+                            {['Warmth', 'Enthusiasm', 'Formality', 'Creativity'].map(trait => (
+                                <div key={trait} className="space-y-1">
+                                    <div className="flex justify-between text-xs text-maintext">
+                                        <span>{trait}</span>
+                                        <span className="text-primary font-medium">{personalizations.personalization?.[trait.toLowerCase()] || 'Medium'}</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="1" max="3" step="1"
+                                        value={['Low', 'Medium', 'High'].indexOf(personalizations.personalization?.[trait.toLowerCase()] || 'Medium') + 1}
+                                        onChange={(e) => updatePersonalization('personalization', { [trait.toLowerCase()]: ['Low', 'Medium', 'High'][parseInt(e.target.value) - 1] })}
+                                        className="w-full h-1.5 bg-secondary rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
+                                    />
+                                </div>
+                            ))}
                         </div>
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Custom Instructions</label>
+
+                        {/* Output Preferences */}
+                        <div className="space-y-3 pt-2 border-t border-border/50">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Output Format</label>
+                            {renderSettingToggle('personalization', 'structuredResponses', 'Structured Responses', 'Prefer headers and organized sections')}
+                            {renderSettingToggle('personalization', 'bulletPoints', 'Use Bullet Points', 'Break down information into lists')}
+                        </div>
+
+                        {/* Custom Instructions */}
+                        <div className="space-y-3 pt-2 border-t border-border/50">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">System Instructions</label>
                             <textarea
                                 value={personalizations.personalization?.customInstructions || ''}
                                 onChange={(e) => updatePersonalization('personalization', { customInstructions: e.target.value })}
-                                placeholder="How should the AI behave, think, or respond?"
-                                className="w-full h-24 bg-secondary text-sm p-3 rounded-xl border border-border outline-none focus:border-orange-500 resize-none"
+                                placeholder="e.g. 'Always answer in 3 sentences', 'Be strictly Socratic'..."
+                                className="w-full h-28 bg-secondary/50 text-sm p-3 rounded-xl border border-border outline-none focus:border-primary resize-none transition-all placeholder:text-subtext/50"
                             />
                         </div>
                     </div>
                 );
-            case 'security':
+            case 'apps':
                 return (
                     <div className="p-3 space-y-3 animate-in fade-in slide-in-from-top-1">
-                        <button className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary hover:bg-surface transition-colors border border-border group">
-                            <div className="flex items-center gap-3">
-                                <Lock className="w-4 h-4 text-red-500" />
-                                <span className="text-sm font-semibold text-maintext">Change Password</span>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-subtext group-hover:text-primary" />
-                        </button>
-                        <button className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary hover:bg-surface transition-colors border border-border group">
-                            <div className="flex items-center gap-3">
-                                <Shield className="w-4 h-4 text-green-500" />
-                                <span className="text-sm font-semibold text-maintext">Active Sessions</span>
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-subtext group-hover:text-primary" />
-                        </button>
-                        <button onClick={onLogout} className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500/10 transition-colors">
-                            <LogOut className="w-4 h-4" />
-                            <span className="text-sm font-bold">Logout from all devices</span>
-                        </button>
-                    </div>
-                );
-            case 'account':
-                return (
-                    <div className="p-3 space-y-4 animate-in fade-in slide-in-from-top-1">
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Nickname</label>
-                            <input
-                                type="text"
-                                value={personalizations.account?.nickname || ''}
-                                onChange={(e) => updatePersonalization('account', { nickname: e.target.value })}
-                                placeholder="AI uses this name..."
-                                className="w-full bg-secondary text-sm p-2 rounded-lg border border-border outline-none focus:border-primary"
-                            />
+                        <div className="p-4 bg-secondary/30 rounded-xl text-center border border-dashed border-border mb-2">
+                            <p className="text-sm font-medium text-maintext">No Active Integrations</p>
+                            <p className="text-xs text-subtext mt-1">Connect tools like Notion, Gmail, or Drive to give AI more capabilities.</p>
                         </div>
-                        <div className="flex items-center justify-between p-3 rounded-xl bg-primary/5 border border-primary/10">
-                            <div>
-                                <p className="text-xs font-bold text-primary uppercase tracking-tighter">Current Plan</p>
-                                <p className="text-sm font-black text-maintext">AISA Pro Unlimited</p>
-                            </div>
-                            <Sparkles className="w-5 h-5 text-primary animate-pulse" />
-                        </div>
-                    </div>
-                );
-            case 'parental':
-                return (
-                    <div className="p-3 space-y-4 animate-in fade-in slide-in-from-top-1">
-                        {renderSettingToggle('parentalControls', 'enabled', 'Enable Content Filter', 'Restrict mature or sensitive topics')}
-                        <div className="space-y-2">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Age Category</label>
-                            <div className="flex gap-1">
-                                {['Child', 'Teen', 'Adult'].map(a => (
-                                    <button
-                                        key={a}
-                                        onClick={() => updatePersonalization('parentalControls', { ageCategory: a })}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.parentalControls?.ageCategory === a ? 'bg-pink-500 text-white border-pink-500' : 'bg-secondary text-subtext border-border hover:border-pink-500/50'}`}
-                                    >
-                                        {a}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        <button className="w-full py-2.5 rounded-xl border border-primary text-primary text-xs font-bold hover:bg-primary hover:text-white transition-all">
+                            Browse App Marketplace
+                        </button>
                     </div>
                 );
             case 'data':
                 return (
-                    <div className="p-3 space-y-2 animate-in fade-in slide-in-from-top-1">
-                        <div className="space-y-2 mb-3">
-                            <label className="text-[10px] font-bold text-subtext uppercase tracking-wider">Chat History</label>
-                            <div className="flex gap-1">
-                                {['On', 'Auto-delete', 'Off'].map(c => (
+                    <div className="p-3 space-y-5 animate-in fade-in slide-in-from-top-1">
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Chat Retention</label>
+                            <div className="flex gap-2">
+                                {['Indefinite', 'Auto-Delete (30 Days)', 'Off'].map(c => (
                                     <button
                                         key={c}
                                         onClick={() => updatePersonalization('dataControls', { chatHistory: c })}
-                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.dataControls?.chatHistory === c ? 'bg-cyan-500 text-white border-cyan-500' : 'bg-secondary text-subtext border-border hover:border-cyan-500/50'}`}
+                                        className={`flex-1 py-2 rounded-lg text-[10px] font-bold border transition-all ${personalizations.dataControls?.chatHistory === c ? 'bg-primary text-white border-primary' : 'bg-transparent text-subtext border-border'}`}
                                     >
                                         {c}
                                     </button>
                                 ))}
                             </div>
                         </div>
-                        {renderSettingToggle('dataControls', 'trainingDataUsage', 'Training data usage', 'Allow AI to learn from chats')}
-                        <button className="w-full flex items-center gap-3 p-3 mt-2 rounded-xl bg-secondary hover:bg-surface transition-colors border border-border text-sm font-semibold">
-                            <Hash className="w-4 h-4 text-subtext" /> Export all data
+                        {renderSettingToggle('dataControls', 'trainingDataUsage', 'Improve Model', 'Allow anonymized chats to train future models')}
+
+                        <div className="pt-2 border-t border-border/50 space-y-2">
+                            <button className="w-full py-2.5 rounded-lg text-xs font-bold text-maintext hover:bg-secondary transition-colors text-left px-3">
+                                Download My Data
+                            </button>
+                            <button className="w-full py-2.5 rounded-lg text-xs font-bold text-red-500 hover:bg-red-500/5 transition-colors text-left px-3">
+                                Delete All Conversations
+                            </button>
+                        </div>
+                    </div>
+                );
+            case 'security':
+                return (
+                    <div className="p-3 space-y-4 animate-in fade-in slide-in-from-top-1">
+                        <button className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/30 hover:bg-secondary transition-colors border border-border group">
+                            <span className="text-sm font-medium text-maintext">Change Password</span>
                         </button>
-                        <button className="w-full flex items-center gap-3 p-3 rounded-xl bg-red-500/5 text-red-500 border border-red-500/10 hover:bg-red-500/10 transition-colors text-sm font-bold">
-                            <Trash2 className="w-4 h-4" /> Delete all chat data
+                        <div className="space-y-2 pt-2 border-t border-border/50">
+                            {renderSettingToggle('security', 'twoFactor', 'Two-Factor Authentication', 'Require code on new login')}
+                        </div>
+                        <button className="w-full flex items-center justify-between p-3 rounded-xl bg-secondary/30 hover:bg-secondary transition-colors border border-border mt-2">
+                            <span className="text-sm font-medium text-maintext">Active Sessions</span>
+                            <span className="text-xs text-subtext">3 Devices</span>
+                        </button>
+                        <button onClick={onLogout} className="w-full py-2.5 rounded-lg text-xs font-bold text-red-500 border border-red-500/20 hover:bg-red-500/10 transition-colors mt-2">
+                            Sign Out Everywhere
                         </button>
                     </div>
                 );
-            case 'apps':
+            case 'parental':
                 return (
-                    <div className="p-3 space-y-3 animate-in fade-in slide-in-from-top-1 text-center py-8">
-                        <AppWindow className="w-12 h-12 text-subtext/30 mx-auto mb-2" />
-                        <p className="text-xs text-subtext font-medium">No external apps connected.</p>
-                        <button className="text-xs font-bold text-primary hover:underline">Explore Marketplace</button>
+                    <div className="p-3 space-y-5 animate-in fade-in slide-in-from-top-1">
+                        <div className="space-y-3">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">User Maturity Profile</label>
+                            <div className="flex gap-2">
+                                {['Child', 'Teen', 'Adult'].map(a => (
+                                    <button
+                                        key={a}
+                                        onClick={() => updatePersonalization('parentalControls', { ageCategory: a })}
+                                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold border transition-all ${personalizations.parentalControls?.ageCategory === a ? 'bg-primary text-white border-primary' : 'bg-transparent text-subtext border-border'}`}
+                                    >
+                                        {a}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        {renderSettingToggle('parentalControls', 'contentFilter', 'Strict Content Filtering', 'Blocks all sensitive and mature topics')}
+                        {renderSettingToggle('parentalControls', 'timeLimits', 'Daily Time Limits', 'Notify when usage exceeds 2 hours')}
+                    </div>
+                );
+            case 'account':
+                return (
+                    <div className="p-3 space-y-5 animate-in fade-in slide-in-from-top-1">
+                        <div className="space-y-2">
+                            <label className="text-xs font-semibold text-maintext uppercase tracking-wider opacity-70">Preferred Name</label>
+                            <input
+                                type="text"
+                                value={personalizations.account?.nickname || ''}
+                                onChange={(e) => updatePersonalization('account', { nickname: e.target.value })}
+                                placeholder="What should AI call you?"
+                                className="w-full bg-secondary/50 text-sm p-2.5 rounded-lg border border-border outline-none focus:border-primary transition-colors"
+                            />
+                        </div>
+                        <div className="p-4 rounded-xl border border-primary/20 bg-primary/5">
+                            <div className="flex justify-between items-center mb-1">
+                                <span className="text-xs font-bold text-primary uppercase tracking-wider">Current Plan</span>
+                                <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded">Active</span>
+                            </div>
+                            <p className="text-lg font-bold text-maintext">AISA Pro Unlimited</p>
+                        </div>
+                        <button className="w-full py-2 text-xs font-medium text-red-500 hover:underline text-left px-1">
+                            Delete Account
+                        </button>
                     </div>
                 );
             default:
@@ -267,17 +295,11 @@ const ProfileSettingsDropdown = ({ onClose, onLogout }) => {
             className="absolute bottom-full left-0 right-0 mb-3 mx-2 bg-card border border-border rounded-2xl shadow-2xl overflow-hidden z-[100] flex flex-col max-h-[500px]"
         >
             {/* Header */}
-            <div className="p-4 border-b border-border bg-secondary/50 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                    <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-                        <User className="w-4 h-4" />
-                    </div>
-                    <div>
-                        <h2 className="text-sm font-black text-maintext leading-tight">AI Personalization</h2>
-                        <p className="text-[10px] text-subtext font-bold uppercase tracking-tighter">Profile Settings</p>
-                    </div>
+            <div className="px-4 py-3 border-b border-border bg-secondary/30 flex items-center justify-between">
+                <div>
+                    <h2 className="text-sm font-bold text-maintext">Settings</h2>
                 </div>
-                <button onClick={onClose} className="p-1.5 hover:bg-secondary rounded-lg transition-colors">
+                <button onClick={onClose} className="p-1 hover:bg-secondary rounded-lg transition-colors">
                     <X className="w-4 h-4 text-subtext" />
                 </button>
             </div>
@@ -291,18 +313,15 @@ const ProfileSettingsDropdown = ({ onClose, onLogout }) => {
                                 onClick={() => toggleSection(section.id)}
                                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all group ${activeSection === section.id ? 'bg-secondary shadow-sm' : 'hover:bg-secondary/50'}`}
                             >
-                                <div className="flex items-center gap-3">
-                                    <div className={`p-2 rounded-xl ${section.bg} ${section.color} group-hover:scale-110 transition-transform`}>
-                                        <section.icon className="w-4 h-4" />
-                                    </div>
-                                    <span className={`text-sm font-bold ${activeSection === section.id ? 'text-primary' : 'text-maintext'}`}>
+                                <div className="flex items-center">
+                                    <span className={`text-sm font-medium ${activeSection === section.id ? 'text-primary' : 'text-maintext'}`}>
                                         {section.label}
                                     </span>
                                 </div>
                                 {activeSection === section.id ? (
                                     <ChevronDown className="w-4 h-4 text-primary" />
                                 ) : (
-                                    <ChevronRight className="w-4 h-4 text-subtext group-hover:text-primary transition-colors" />
+                                    <ChevronRight className="w-4 h-4 text-subtext/50 group-hover:text-primary transition-colors" />
                                 )}
                             </button>
 
@@ -326,19 +345,19 @@ const ProfileSettingsDropdown = ({ onClose, onLogout }) => {
             </div>
 
             {/* Footer */}
-            <div className="p-2 border-t border-border bg-secondary/20 flex gap-2">
+            <div className="p-2 border-t border-border bg-secondary/10 flex gap-2">
                 <button
                     onClick={resetPersonalizations}
-                    className="flex-1 py-2 text-[10px] font-bold text-subtext hover:text-red-500 hover:bg-red-500/5 rounded-lg transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+                    className="flex-1 py-2 text-[10px] font-bold text-subtext hover:text-red-500 hover:bg-red-500/5 rounded-lg transition-all uppercase tracking-widest"
                 >
-                    <Trash2 className="w-3 h-3" /> Reset Defaults
+                    Reset Defaults
                 </button>
                 <div className="w-[1px] h-4 bg-border self-center" />
                 <button
                     onClick={onLogout}
-                    className="flex-1 py-2 text-[10px] font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-all uppercase tracking-widest flex items-center justify-center gap-2"
+                    className="flex-1 py-2 text-[10px] font-bold text-red-500 hover:bg-red-500/10 rounded-lg transition-all uppercase tracking-widest"
                 >
-                    <LogOut className="w-3 h-3" /> Log Out
+                    Log Out
                 </button>
             </div>
         </motion.div>

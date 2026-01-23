@@ -11,7 +11,7 @@ const PlatformSettings = () => {
 
             {/* General Config */}
             <div className="bg-card border border-border rounded-xl p-6">
-                <h3 className="font-bold text-maintext mb-4 flex items-center gap-2"><Settings className="w-5 h-5" /> General Configuration</h3>
+                <h3 className="font-bold text-maintext mb-4 flex items-center gap-2"><Settings2 className="w-5 h-5" /> General Configuration</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                         <label className="block text-sm font-medium text-maintext mb-2">Platform Name</label>

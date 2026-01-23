@@ -15,7 +15,7 @@ const CookiePolicyModal = ({ isOpen, onClose }) => {
             ]
         },
         {
-            icon: Settings,
+            icon: Settings2,
             title: "Types of Cookies We Use",
             items: [
                 "Essential (Required): Authentication, session management, security",

@@ -6,7 +6,7 @@ import {
   LayoutGrid,
   MessageSquare,
   Bot,
-  Settings,
+  Settings2,
   LogOut,
   Zap,
   X,

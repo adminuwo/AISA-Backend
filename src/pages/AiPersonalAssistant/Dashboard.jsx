@@ -227,7 +227,7 @@ const Dashboard = () => {
 
                     <div className="bg-white/80 dark:bg-[#1A1A1A]/90 backdrop-blur-xl p-4 md:p-5 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-800 border-t-4 border-t-primary relative overflow-hidden group hover:shadow-lg transition-all">
                         <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                            <Settings className="w-12 h-12 md:w-14 md:h-14 text-primary" />
+                            <Settings2 className="w-12 h-12 md:w-14 md:h-14 text-primary" />
                         </div>
                         <p className="text-gray-500 text-xs md:text-sm font-medium">Total Routines</p>
                         <h3 className="text-2xl md:text-3xl font-bold text-primary mt-1">
@@ -341,7 +341,7 @@ const Dashboard = () => {
                                                     onClick={() => { setEditingTask(task); setIsModalOpen(true); }}
                                                     className="p-2 text-gray-400 hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                                                 >
-                                                    <Settings className="w-4 h-4" />
+                                                    <Settings2 className="w-4 h-4" />
                                                 </button>
                                                 <button
                                                     onClick={() => handleDelete(task._id)}
