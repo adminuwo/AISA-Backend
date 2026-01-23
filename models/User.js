@@ -48,6 +48,19 @@ const userSchema = new mongoose.Schema({
     modePreferences: {
         defaultMode: { type: String, default: 'NORMAL_CHAT' },
         autoDetect: { type: Boolean, default: true }
+    },
+    plan: {
+        type: String,
+        enum: ['Basic', 'Pro', 'King'],
+        default: 'Basic'
+    },
+    subscription: {
+        id: String,
+        status: String,
+        currentPeriodEnd: Date,
+        razorpay_payment_id: String,
+        razorpay_order_id: String,
+        razorpay_signature: String
     }
 
 }, { timestamps: true });
