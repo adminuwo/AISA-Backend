@@ -18,6 +18,7 @@ import { Link } from 'react-router';
 import PrivacyPolicyModal from '../Components/PolicyModals/PrivacyPolicyModal';
 import TermsOfServiceModal from '../Components/PolicyModals/TermsOfServiceModal';
 import CookiePolicyModal from '../Components/PolicyModals/CookiePolicyModal';
+import AboutAISA from '../Components/AboutAISA';
 
 const Landing = () => {
     const navigate = useNavigate();
@@ -33,6 +34,7 @@ const Landing = () => {
     const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
     const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
     const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
+    const [isAboutModalOpen, setIsAboutModalOpen] = useState(false);
 
     const issueOptions = [
         "General Inquiry",
@@ -110,7 +112,17 @@ const Landing = () => {
                     </AnimatePresence>
                 </motion.div>
 
+
+
                 <div className="flex items-center gap-2 md:gap-4">
+                    <button
+                        onClick={() => setIsAboutModalOpen(true)}
+                        className="hidden md:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-bold text-subtext hover:bg-secondary hover:text-primary transition-all"
+                    >
+                        <Bot className="w-4 h-4" />
+                        About AISA
+                    </button>
+
                     {/* Theme Toggle */}
                     <button
                         onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
@@ -257,10 +269,10 @@ const Landing = () => {
             {/* Footer Section */}
             <footer className="w-full bg-white/40 dark:bg-black/40 border-t border-white/20 dark:border-white/10 mt-20 relative z-10 backdrop-blur-xl rounded-t-[3rem] shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-t from-blue-50/50 to-transparent dark:from-blue-900/10 pointer-events-none" />
-                <div className="max-w-7xl mx-auto px-6 pt-20 pb-10 relative z-10">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 mb-16">
+                <div className="max-w-6xl mx-auto px-6 pt-20 pb-10 relative z-10">
+                    <div className="flex flex-col lg:flex-row justify-start gap-20 mb-16">
                         {/* Brand Column */}
-                        <div className="space-y-6">
+                        <div className="space-y-6 max-w-sm">
                             <div className="flex items-center gap-3">
                                 <img src="/logo/Logo.svg" alt="Logo" className="w-12 h-12 object-contain" />
                                 <span className="text-2xl font-black tracking-tighter text-maintext">{name} <sup className="text-xs">TM</sup></span>
@@ -268,32 +280,32 @@ const Landing = () => {
                             <div className="flex items-center gap-3 flex-wrap">
                                 {[
                                     {
-                                        img: "/social-icons/linkedin.png",
+                                        img: "/icons-new/linkedin.avif",
                                         href: "https://www.linkedin.com/in/aimall-global/",
                                         alt: "LinkedIn"
                                     },
                                     {
-                                        img: "/social-icons/instagram.png",
+                                        img: "/icons-new/instagram.jpg",
                                         href: "https://www.instagram.com/aimall.global/",
                                         alt: "Instagram"
                                     },
                                     {
-                                        img: "/social-icons/facebook.png",
+                                        img: "/icons-new/facebook.png",
                                         href: "https://www.facebook.com/aimallglobal/",
                                         alt: "Facebook"
                                     },
                                     {
-                                        img: "/social-icons/x.png",
+                                        img: "/icons-new/twitter.jpg",
                                         href: "https://x.com/aimallglobal",
                                         alt: "X"
                                     },
                                     {
-                                        img: "/social-icons/youtube.png",
+                                        img: "/icons-new/youtube.png",
                                         href: "https://www.youtube.com/@aimallglobal",
                                         alt: "YouTube"
                                     },
                                     {
-                                        img: "/social-icons/whatsapp.png",
+                                        img: "/icons-new/whatsapp.avif",
                                         href: "https://api.whatsapp.com/send?phone=918359890909",
                                         alt: "WhatsApp"
                                     }
@@ -303,34 +315,15 @@ const Landing = () => {
                                         href={social.href}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="w-8 h-8 transition-transform duration-300 flex items-center justify-center shrink-0 hover:scale-110"
+                                        className="w-10 h-10 transition-transform duration-300 flex items-center justify-center shrink-0 hover:scale-110"
                                     >
-                                        <img src={social.img} alt={social.alt} className="w-full h-full object-contain" />
+                                        <img src={social.img} alt={social.alt} className="w-full h-full object-cover rounded-xl" />
                                     </a>
                                 ))}
                             </div>
                         </div>
 
-                        {/* Explore Column */}
-                        <div>
-                            <h4 className="text-sm font-bold text-maintext uppercase tracking-widest mb-6">Explore</h4>
-                            <ul className="space-y-4">
-                                {[
-                                    { label: "Chat", onClick: () => navigate("/dashboard/chat") },
-                                    { label: "Login", onClick: () => navigate("/login") },
-                                    { label: "Sign Up", onClick: () => navigate("/signup") },
-                                ].map((link, i) => (
-                                    <li key={i}>
-                                        <button
-                                            onClick={link.onClick}
-                                            className="text-sm text-subtext hover:text-primary transition-colors font-medium"
-                                        >
-                                            {link.label}
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
-                        </div>
+
 
                         {/* Support Column */}
                         <div>
@@ -338,6 +331,7 @@ const Landing = () => {
                             <ul className="space-y-4">
                                 {[
                                     { label: "Help Center", onClick: () => setIsFaqOpen(true) },
+                                    { label: "About AISA", onClick: () => setIsAboutModalOpen(true) },
                                 ].map((link, i) => (
                                     <li key={i}>
                                         {link.onClick ? (
@@ -412,130 +406,133 @@ const Landing = () => {
             </footer>
 
             {/* FAQ Modal */}
-            {isFaqOpen && (
-                <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                    <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
-                        <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-blue-50 dark:bg-gray-800">
-                            <div className="flex gap-4">
+            {
+                isFaqOpen && (
+                    <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+                        <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in duration-200">
+                            <div className="p-6 border-b border-gray-200 dark:border-gray-800 flex justify-between items-center bg-blue-50 dark:bg-gray-800">
+                                <div className="flex gap-4">
+                                    <button
+                                        onClick={() => setActiveTab('faq')}
+                                        className={`text-lg font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'faq' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                    >
+                                        FAQ
+                                    </button>
+                                    <button
+                                        onClick={() => setActiveTab('help')}
+                                        className={`text-lg font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'help' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                    >
+                                        Help
+                                    </button>
+                                </div>
                                 <button
-                                    onClick={() => setActiveTab('faq')}
-                                    className={`text-lg font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'faq' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
+                                    onClick={() => setIsFaqOpen(false)}
+                                    className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full text-gray-600 dark:text-gray-400 transition-colors"
                                 >
-                                    FAQ
-                                </button>
-                                <button
-                                    onClick={() => setActiveTab('help')}
-                                    className={`text-lg font-bold px-4 py-2 rounded-lg transition-colors ${activeTab === 'help' ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'}`}
-                                >
-                                    Help
+                                    <X className="w-6 h-6" />
                                 </button>
                             </div>
-                            <button
-                                onClick={() => setIsFaqOpen(false)}
-                                className="p-2 hover:bg-black/5 dark:hover:bg-white/5 rounded-full text-gray-600 dark:text-gray-400 transition-colors"
-                            >
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
 
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                            {activeTab === 'faq' ? (
-                                <>
-                                    <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Get quick answers to common questions about our platform</p>
-                                    {faqs.map((faq, index) => (
-                                        <div key={index} className="border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 overflow-hidden hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                                            <button
-                                                onClick={() => setOpenFaqIndex(openFaqIndex === index ? null : index)}
-                                                className="w-full flex justify-between items-center p-4 text-left hover:bg-blue-50 dark:hover:bg-gray-800 transition-colors focus:outline-none"
-                                            >
-                                                <span className="font-semibold text-gray-900 dark:text-white text-[15px]">{faq.question}</span>
-                                                {openFaqIndex === index ? (
-                                                    <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                                                ) : (
-                                                    <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                                                )}
-                                            </button>
-                                            <div
-                                                className={`overflow-hidden transition-all duration-300 ease-in-out ${openFaqIndex === index ? 'max-h-96 opacity-100 bg-blue-50/50 dark:bg-gray-800/50' : 'max-h-0 opacity-0'}`}
-                                            >
-                                                <div className="p-4 pt-0 text-gray-600 dark:text-gray-400 text-sm leading-relaxed border-t border-gray-200 dark:border-gray-700 mt-2 pt-3">
-                                                    {faq.answer}
+                            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                                {activeTab === 'faq' ? (
+                                    <>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 font-medium">Get quick answers to common questions about our platform</p>
+                                        {faqs.map((faq, index) => (
+                                            <div key={index} className="border border-gray-200 dark:border-gray-800 rounded-xl bg-white dark:bg-gray-900 overflow-hidden hover:border-blue-300 dark:hover:border-blue-700 transition-all">
+                                                <button
+                                                    onClick={() => setOpenFaqIndex(openFaqIndex === index ? null : index)}
+                                                    className="w-full flex justify-between items-center p-4 text-left hover:bg-blue-50 dark:hover:bg-gray-800 transition-colors focus:outline-none"
+                                                >
+                                                    <span className="font-semibold text-gray-900 dark:text-white text-[15px]">{faq.question}</span>
+                                                    {openFaqIndex === index ? (
+                                                        <ChevronUp className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                                                    ) : (
+                                                        <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                                                    )}
+                                                </button>
+                                                <div
+                                                    className={`overflow-hidden transition-all duration-300 ease-in-out ${openFaqIndex === index ? 'max-h-96 opacity-100 bg-blue-50/50 dark:bg-gray-800/50' : 'max-h-0 opacity-0'}`}
+                                                >
+                                                    <div className="p-4 pt-0 text-gray-600 dark:text-gray-400 text-sm leading-relaxed border-t border-gray-200 dark:border-gray-700 mt-2 pt-3">
+                                                        {faq.answer}
+                                                    </div>
                                                 </div>
                                             </div>
+                                        ))}
+                                    </>
+                                ) : (
+                                    <div className="flex flex-col gap-6">
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">Select Issue Category</label>
+                                            <div className="relative">
+                                                <select
+                                                    value={issueType}
+                                                    onChange={(e) => setIssueType(e.target.value)}
+                                                    className="w-full p-4 pr-10 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-600 dark:focus:border-blue-400 outline-none appearance-none text-gray-900 dark:text-white font-medium cursor-pointer hover:border-blue-400 transition-colors"
+                                                >
+                                                    {issueOptions.map((opt) => (
+                                                        <option key={opt} value={opt}>{opt}</option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                                            </div>
                                         </div>
-                                    ))}
-                                </>
-                            ) : (
-                                <div className="flex flex-col gap-6">
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">Select Issue Category</label>
-                                        <div className="relative">
-                                            <select
-                                                value={issueType}
-                                                onChange={(e) => setIssueType(e.target.value)}
-                                                className="w-full p-4 pr-10 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-600 dark:focus:border-blue-400 outline-none appearance-none text-gray-900 dark:text-white font-medium cursor-pointer hover:border-blue-400 transition-colors"
-                                            >
-                                                {issueOptions.map((opt) => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
-                                            <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-500 dark:text-gray-400 pointer-events-none" />
+                                        <div>
+                                            <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">Describe your issue</label>
+                                            <textarea
+                                                className="w-full p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-600 dark:focus:border-blue-400 outline-none resize-none text-gray-900 dark:text-white min-h-[150px]"
+                                                placeholder="Please provide details about the problem you are facing..."
+                                                value={issueText}
+                                                onChange={(e) => setIssueText(e.target.value)}
+                                            />
                                         </div>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-bold text-gray-900 dark:text-white mb-2">Describe your issue</label>
-                                        <textarea
-                                            className="w-full p-4 rounded-xl bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 focus:border-blue-600 dark:focus:border-blue-400 outline-none resize-none text-gray-900 dark:text-white min-h-[150px]"
-                                            placeholder="Please provide details about the problem you are facing..."
-                                            value={issueText}
-                                            onChange={(e) => setIssueText(e.target.value)}
-                                        />
-                                    </div>
-                                    <button
-                                        onClick={handleSupportSubmit}
-                                        disabled={isSending || !issueText.trim()}
-                                        className={`flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 ${isSending || !issueText.trim() ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
-                                    >
-                                        {isSending ? (
-                                            <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                                        ) : (
-                                            <>
-                                                <HelpCircle className="w-5 h-5" />
-                                                Send to Support
-                                            </>
+                                        <button
+                                            onClick={handleSupportSubmit}
+                                            disabled={isSending || !issueText.trim()}
+                                            className={`flex items-center justify-center gap-2 bg-blue-600 text-white py-3 rounded-xl font-bold transition-all shadow-lg shadow-blue-600/20 ${isSending || !issueText.trim() ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'}`}
+                                        >
+                                            {isSending ? (
+                                                <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                                            ) : (
+                                                <>
+                                                    <HelpCircle className="w-5 h-5" />
+                                                    Send to Support
+                                                </>
+                                            )}
+                                        </button>
+                                        {sendStatus === 'success' && (
+                                            <div className="p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-lg text-sm text-center font-medium border border-green-500/20 animate-in fade-in slide-in-from-top-2">
+                                                Ticket Submitted Successfully! Our team will contact you soon.
+                                            </div>
                                         )}
-                                    </button>
-                                    {sendStatus === 'success' && (
-                                        <div className="p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-lg text-sm text-center font-medium border border-green-500/20 animate-in fade-in slide-in-from-top-2">
-                                            Ticket Submitted Successfully! Our team will contact you soon.
-                                        </div>
-                                    )}
-                                    {sendStatus === 'error' && (
-                                        <div className="p-3 bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg text-sm text-center font-medium border border-red-500/20 animate-in fade-in slide-in-from-top-2">
-                                            Failed to submit ticket. Please try again or email us directly.
-                                        </div>
-                                    )}
-                                    <p className="text-xs text-center text-gray-600 dark:text-gray-400">
-                                        Or email us directly at <a href="mailto:support@ai-mall.in" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">support@ai-mall.in</a>
-                                    </p>
-                                </div>
-                            )}
-                        </div>
-                        <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-center">
-                            <button
-                                onClick={() => setIsFaqOpen(false)}
-                                className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold hover:opacity-90 transition-all shadow-lg shadow-blue-600/20"
-                            >
-                                Close
-                            </button>
+                                        {sendStatus === 'error' && (
+                                            <div className="p-3 bg-red-500/10 text-red-600 dark:text-red-400 rounded-lg text-sm text-center font-medium border border-red-500/20 animate-in fade-in slide-in-from-top-2">
+                                                Failed to submit ticket. Please try again or email us directly.
+                                            </div>
+                                        )}
+                                        <p className="text-xs text-center text-gray-600 dark:text-gray-400">
+                                            Or email us directly at <a href="mailto:support@ai-mall.in" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">support@ai-mall.in</a>
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800 text-center">
+                                <button
+                                    onClick={() => setIsFaqOpen(false)}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-xl font-bold hover:opacity-90 transition-all shadow-lg shadow-blue-600/20"
+                                >
+                                    Close
+                                </button>
+                            </div>
                         </div>
                     </div>
-                </div>
-            )}
+                )
+            }
 
             <PrivacyPolicyModal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} />
             <TermsOfServiceModal isOpen={isTermsModalOpen} onClose={() => setIsTermsModalOpen(false)} />
             <CookiePolicyModal isOpen={isCookieModalOpen} onClose={() => setIsCookieModalOpen(false)} />
+            <AboutAISA isOpen={isAboutModalOpen} onClose={() => setIsAboutModalOpen(false)} />
 
         </div >
     );

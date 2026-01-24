@@ -6,33 +6,24 @@ import toast from 'react-hot-toast';
 
 const PersonalizationContext = createContext();
 
-export const usePersonalization = () => {
-    const context = useContext(PersonalizationContext);
-    if (!context) {
-        throw new Error('usePersonalization must be used within a PersonalizationProvider');
-    }
-    return context;
-};
-
 const DEFAULT_PREFERENCES = {
     general: {
         language: 'English',
         theme: 'System',
-        fontSize: 'Medium',
         responseSpeed: 'Balanced',
         screenReader: false,
         highContrast: false
     },
     notifications: {
-        newMessage: true,
-        aiTips: true,
-        productUpdates: true,
-        emailAlerts: false,
-        soundAlerts: true
+        responses: 'Push',
+        groupChats: 'Push',
+        tasks: 'Push, Email',
+        projects: 'Email',
+        recommendations: 'Push, Email'
     },
     personalization: {
-        baseStyle: 'Default',
-        warmth: 'Medium',
+        fontSize: 'Medium',
+        fontStyle: 'Default',
         enthusiasm: 'Medium',
         formality: 'Medium',
         creativity: 'Medium',
@@ -65,15 +56,63 @@ export const PersonalizationProvider = ({ children }) => {
         const saved = localStorage.getItem('personalizations');
         return saved ? JSON.parse(saved) : DEFAULT_PREFERENCES;
     });
+    const [notifications, setNotifications] = useState([]);
+    const [chatSessions, setChatSessions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
     const user = getUserData();
 
-    useEffect(() => {
-        if (user?.token) {
-            fetchPersonalizations();
+    const fetchChatSessions = async () => {
+        if (!user?.token) return;
+        try {
+            const res = await axios.get(apis.chatAgent, {
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            setChatSessions(res.data || []);
+        } catch (error) {
+            console.error('Failed to fetch chat sessions', error);
         }
-    }, [user?.token]);
+    };
+
+    const fetchNotifications = async () => {
+        if (!user?.token) return;
+        try {
+            const res = await axios.get(apis.user + '/notifications', {
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            setNotifications(res.data);
+        } catch (error) {
+            console.error('Failed to fetch notifications', error.response?.data || error.message);
+        }
+    };
+
+    const deleteNotification = async (notifId) => {
+        setNotifications(prev => prev.filter(n => n.id !== notifId));
+        try {
+            if (user?.token) {
+                await axios.delete(`${apis.user}/notifications/${notifId}`, {
+                    headers: { 'Authorization': `Bearer ${user.token}` }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to delete notification', error);
+            fetchNotifications();
+        }
+    };
+
+    const clearAllNotifications = async () => {
+        setNotifications([]);
+        try {
+            if (user?.token) {
+                await axios.delete(`${apis.user}/notifications`, {
+                    headers: { 'Authorization': `Bearer ${user.token}` }
+                });
+            }
+        } catch (error) {
+            console.error('Failed to clear notifications', error);
+            fetchNotifications();
+        }
+    };
 
     const fetchPersonalizations = async () => {
         if (!user?.token) return;
@@ -83,45 +122,67 @@ export const PersonalizationProvider = ({ children }) => {
                 headers: { 'Authorization': `Bearer ${user.token}` }
             });
             if (res.data.personalizations) {
-                setPersonalizationsState(res.data.personalizations);
-                localStorage.setItem('personalizations', JSON.stringify(res.data.personalizations));
+                const merged = { ...DEFAULT_PREFERENCES, ...res.data.personalizations };
+                setPersonalizationsState(merged);
+                localStorage.setItem('personalizations', JSON.stringify(merged));
+                applyDynamicStyles(merged);
             } else {
-                // If backend returns user but no personalizations yet, merge defaults
                 setPersonalizationsState(prev => prev || DEFAULT_PREFERENCES);
             }
         } catch (error) {
             console.error('Failed to fetch personalizations', error);
-            // Ensure we at least have defaults
             setPersonalizationsState(prev => prev || DEFAULT_PREFERENCES);
         } finally {
             setIsLoading(false);
         }
     };
 
-    const updatePersonalization = async (section, data) => {
-        const fallback = { ...personalizations };
-        const updated = {
-            ...personalizations,
-            [section]: { ...(personalizations?.[section] || {}), ...data }
+    const applyDynamicStyles = (prefs = personalizations) => {
+        const fontSize = prefs?.personalization?.fontSize || 'Medium';
+        const fontSizeMap = {
+            'Small': '14px',
+            'Medium': '16px',
+            'Large': '20px',
+            'Extra Large': '24px'
         };
+        document.documentElement.style.setProperty('--aisa-font-size', fontSizeMap[fontSize]);
+        const scaleMap = { 'Small': '0.9', 'Medium': '1', 'Large': '1.2', 'Extra Large': '1.4' };
+        document.documentElement.style.setProperty('--aisa-scale', scaleMap[fontSize]);
+    };
 
-        // Optimistic update
-        setPersonalizationsState(updated);
-        localStorage.setItem('personalizations', JSON.stringify(updated));
+    useEffect(() => {
+        if (user?.token) {
+            fetchPersonalizations();
+            fetchNotifications();
+            fetchChatSessions();
+        }
+        applyDynamicStyles();
+    }, [user?.token]);
 
+    const updatePersonalization = async (section, data) => {
+        setPersonalizationsState(prev => {
+            const next = {
+                ...prev,
+                [section]: { ...(prev?.[section] || {}), ...data }
+            };
+            localStorage.setItem('personalizations', JSON.stringify(next));
+            applyDynamicStyles(next);
+            syncWithBackend(section, { ...(prev?.[section] || {}), ...data });
+            return next;
+        });
+    };
+
+    const syncWithBackend = async (section, fullSectionData) => {
         try {
             if (user?.token) {
                 await axios.put(apis.user + '/personalizations',
-                    { personalizations: { [section]: updated[section] } },
+                    { personalizations: { [section]: fullSectionData } },
                     { headers: { 'Authorization': `Bearer ${user.token}` } }
                 );
-                // toast.success('Preference updated');
             }
         } catch (error) {
-            console.error('Failed to save personalization', error);
-            toast.error('Failed to save settings');
-            setPersonalizationsState(fallback);
-            localStorage.setItem('personalizations', JSON.stringify(fallback));
+            console.error('Failed to sync personalization', error);
+            toast.error('Failed to sync settings');
         }
     };
 
@@ -131,10 +192,10 @@ export const PersonalizationProvider = ({ children }) => {
                 await axios.post(apis.user + '/personalizations/reset', {}, {
                     headers: { 'Authorization': `Bearer ${user.token}` }
                 });
-                setPersonalizationsState(null); // Will be re-fetched or use defaults
-                localStorage.removeItem('personalizations');
+                setPersonalizationsState(DEFAULT_PREFERENCES);
+                localStorage.setItem('personalizations', JSON.stringify(DEFAULT_PREFERENCES));
+                applyDynamicStyles(DEFAULT_PREFERENCES);
                 toast.success('Settings reset to defaults');
-                fetchPersonalizations();
             }
         } catch (error) {
             console.error('Failed to reset personalizations', error);
@@ -143,8 +204,26 @@ export const PersonalizationProvider = ({ children }) => {
     };
 
     return (
-        <PersonalizationContext.Provider value={{ personalizations, updatePersonalization, resetPersonalizations, isLoading }}>
+        <PersonalizationContext.Provider value={{
+            personalizations,
+            updatePersonalization,
+            resetPersonalizations,
+            isLoading,
+            notifications,
+            deleteNotification,
+            clearAllNotifications,
+            chatSessions,
+            refreshChatSessions: fetchChatSessions
+        }}>
             {children}
         </PersonalizationContext.Provider>
     );
+};
+
+export const usePersonalization = () => {
+    const context = useContext(PersonalizationContext);
+    if (!context) {
+        throw new Error('usePersonalization must be used within a PersonalizationProvider');
+    }
+    return context;
 };

@@ -14,7 +14,6 @@ import {
   FileText,
   Bell,
 
-  DollarSign,
   HelpCircle,
   ChevronDown,
   ChevronUp,
@@ -112,14 +111,13 @@ const Sidebar = ({ isOpen, onClose }) => {
         }
       }).then((res) => {
         if (res.data) {
-          setUserRecoil({ user: res.data });
-          setUserData(res.data);
+          const mergedData = setUserData(res.data);
+          setUserRecoil({ user: mergedData });
         }
       }).catch((err) => {
         console.error(err);
         if (err.status == 401) {
           clearUser()
-          navigate(AppRoute.LOGIN)
         }
       })
     }
@@ -182,23 +180,6 @@ const Sidebar = ({ isOpen, onClose }) => {
       console.error('Failed to delete session:', error);
     }
   };
-
-  // Close profile menu on outside click
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isProfileMenuOpen && !event.target.closest('.profile-menu-container')) {
-        setIsProfileMenuOpen(false);
-      }
-    };
-
-    if (isProfileMenuOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isProfileMenuOpen]);
 
   if (notifiyTgl.notify) {
     setTimeout(() => {

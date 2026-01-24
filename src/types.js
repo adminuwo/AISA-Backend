@@ -57,11 +57,12 @@ export const AppRoute = {
 };
 
 // API Base URL
-const API = 'http://localhost:8080/api';
+const API = 'http://127.0.0.1:8080/api';
 
 const apis = {
   resetPassword: `${API}/auth/reset-password`,
   user: `${API}/user`,
+  profile: `${API}/user/profile`,
   getPayments: `${API}/user/payments`,
   notifications: `${API}/notifications`,
   agents: `${API}/agents`,

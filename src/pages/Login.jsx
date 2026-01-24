@@ -7,6 +7,7 @@ import { apis, AppRoute } from '../types';
 import { setUserData, userData as userDataAtom } from '../userStore/userData';
 import { logo } from '../constants';
 import { useSetRecoilState } from 'recoil';
+import toast from 'react-hot-toast';
 
 
 const Login = () => {
@@ -29,6 +30,7 @@ const Login = () => {
     axios.post(apis.logIn, payload).then((res) => {
       setError(false)
       setMessage(res.data.message)
+      toast.success('Successfully Logged in AISA');
       const from = location.state?.from || AppRoute.DASHBOARD;
       navigate(from, { replace: true });
       setUserData(res.data)
