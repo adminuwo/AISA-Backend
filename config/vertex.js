@@ -2,17 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 
-// if (process.env.GOOGLE_CREDENTIALS_BASE64) {
-//   const decodedKey = Buffer.from(
-//     process.env.GOOGLE_CREDENTIALS_BASE64,
-//     "base64"
-//   ).toString("utf-8");
 
-//   const tempKeyPath = path.join(os.tmpdir(), "gcp-key.json");
-//   fs.writeFileSync(tempKeyPath, decodedKey);
-
-//   process.env.GOOGLE_APPLICATION_CREDENTIALS = tempKeyPath;
-// }
 
 
 import {
