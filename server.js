@@ -8,13 +8,13 @@ import dashboardRoutes from "./routes/dashboardRoutes.js";
 import agentRoutes from "./routes/agentRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import cookieParser from "cookie-parser";
-import emailVatifiation from "./routes/emailVerification.js"
+import emailVerification from "./routes/emailVerification.js"
 import userRoute from './routes/user.js'
 
 import chatRoute from './routes/chat.routes.js';
 import knowledgeRoute from './routes/knowledge.routes.js';
-import aibaseRoutes from './routes/aibaseRoutes.js';
-import * as aibaseService from './services/aibaseService.js';
+// import aibaseRoutes from './routes/aibaseRoutes.js'; // Removed
+// import * as aibaseService from './services/aibaseService.js'; // Removed
 
 import notificationRoutes from "./routes/notificationRoutes.js";
 import supportRoutes from './routes/supportRoutes.js';
@@ -25,6 +25,8 @@ import reminderRoutes from './routes/reminderRoutes.js';
 import imageRoutes from './routes/image.routes.js';
 import videoRoutes from './routes/videoRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+
+// End of standard imports
 
 dotenv.config();
 const app = express();
@@ -40,11 +42,7 @@ console.log("---------------------");
 // Connect to Database
 connectDB().then(() => {
   console.log("Database connection attempt finished, initializing services...");
-  try {
-    aibaseService.initializeFromDB?.();
-  } catch (e) {
-    console.warn("AIBASE service initialization skipped:", e.message);
-  }
+  // aibaseService init removed
 }).catch(error => {
   console.error("Database connection failed during startup:", error);
 });
@@ -70,53 +68,50 @@ app.get("/ping-top", (req, res) => {
 app.get("/", (req, res) => {
   res.send("All working")
 })
-// Global Debug middleware (non-consumptive)
+// Global Debug middleware
 app.use((req, res, next) => {
-  if (req.url.startsWith('/api')) {
-    console.log(`[API DEBUG] ${req.method} ${req.url}`);
-  }
+  console.log(`[REQUEST] ${req.method} ${req.url}`);
   next();
 });
 
-// Mount Routes
+// --- API Routes Registration ---
+
+// Auth & User
+app.use('/api/auth/verify-email', emailVerification);
+app.use('/api/auth', authRoutes);
+app.use('/api/user', userRoute);
+
+// Intelligence Features
+app.use('/api/chat', chatRoutes);
+app.use('/api/agents', agentRoutes);
+app.use('/api/voice', voiceRoutes);
+app.use('/api/image', imageRoutes);
+app.use('/api/video', videoRoutes);
+
+// Utility & Support
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/reminders', reminderRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/personal-assistant', personalTaskRoutes);
 
-// AIBASE Chat Routes
+// Business & Dashboard
+app.use('/api/payment', paymentRoutes);
+app.use('/api/dashboard', dashboardRoutes); // More specific prefix
+app.use('/api', dashboardRoutes); // Fallback for old /api/stats style
+
+// AIBASE (V3) - Cleaned up
 app.use('/api/aibase/chat', chatRoute);
 app.use('/api/aibase/knowledge', knowledgeRoute);
-app.use('/api/aibase', aibaseRoutes);
+// app.use('/api/aibase', aibaseRoutes); // Removed unused route
 
-// Feature Routes
-
-// User & Auth Routes
-app.use('/api/user', userRoute);
-app.use('/api/auth', authRoutes);
-app.use('/api/auth/verify-email', emailVatifiation);
-
-// Feature Routes
-app.use('/api/chat', chatRoutes);
-app.use('/api/agents', agentRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/voice', voiceRoutes);
-app.use('/api/reminders', reminderRoutes);
-
-// Dashboard
-app.use('/api', dashboardRoutes);
-app.use('/api/payment', paymentRoutes);
-
-// Image Generation
-app.use('/api/image', imageRoutes);
-
-// Video Generation
-app.use('/api/video', videoRoutes);
+// --- End of Routes ---
 
 // Catch-all 404
 app.use((req, res) => {
-  console.warn(`[404 ERROR] No route found for: ${req.method} ${req.originalUrl}`);
+  console.warn(`[404 NOT MATCHED] ${req.method} ${req.originalUrl}`);
   res.status(404).json({
-    error: "Route not found in local backend",
+    error: "Route not found",
     method: req.method,
     path: req.originalUrl
   });
@@ -124,13 +119,13 @@ app.use((req, res) => {
 
 // Global Error Handler
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
+  console.error("[SERVER ERROR]", err.stack);
+  res.status(500).json({ error: 'Internal Server Error' });
 });
 
 // Start listening
-app.listen(PORT, () => {
-  console.log(`AI-Mall Backend running on  http://localhost:${PORT}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`AI-Mall Backend running on http://0.0.0.0:${PORT}`);
   console.log("Razorpay Config Check:", {
     KeyID: process.env.RAZORPAY_KEY_ID ? `${process.env.RAZORPAY_KEY_ID.substring(0, 8)}...` : "MISSING",
     Secret: process.env.RAZORPAY_KEY_SECRET ? "PRESENT" : "MISSING"

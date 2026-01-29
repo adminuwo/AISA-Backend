@@ -332,6 +332,102 @@ export const Welcome_Email_Template = `
 </html>
 `;
 
+export const Reset_Password_OTP_Template = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your Password - AISA</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 600px;
+            margin: 30px auto;
+            background: #ffffff;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+            border: 1px solid #ddd;
+        }
+        .header {
+            background-color: #FF5733;
+            color: white;
+            padding: 30px 20px;
+            text-align: center;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 26px;
+            font-weight: bold;
+        }
+        .content {
+            padding: 30px 25px;
+            color: #333;
+        }
+        .greeting {
+            font-size: 16px;
+            margin-bottom: 20px;
+            color: #333;
+        }
+        .otp-code {
+            display: block;
+            margin: 25px 0;
+            font-size: 32px;
+            color: #FF5733;
+            background: #fff5f2;
+            border: 2px dashed #FF5733;
+            padding: 20px;
+            text-align: center;
+            border-radius: 8px;
+            font-weight: bold;
+            letter-spacing: 6px;
+            font-family: 'Courier New', monospace;
+        }
+        .info-text {
+            font-size: 15px;
+            color: #555;
+            margin: 15px 0;
+        }
+        .footer {
+            background-color: #f4f4f4;
+            padding: 20px;
+            text-align: center;
+            color: #777;
+            font-size: 12px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔒 Reset Your Password</h1>
+        </div>
+        <div class="content">
+            <p class="greeting">Hello {name},</p>
+            <p class="info-text">
+                We received a request to reset your password. Use the following OTP code to proceed with the reset:
+            </p>
+            <span class="otp-code">{otpCode}</span>
+            <p class="info-text">
+                This code is valid for 15 minutes. If you did not request a password reset, please ignore this email.
+            </p>
+        </div>
+        <div class="footer">
+            <p><strong>AISA</strong> - Secure & Intelligent AI Chat</p>
+        </div>
+    </div>
+</body>
+</html>
+`;
+
 export const Reset_Password_Email_Template = `
 <!DOCTYPE html>
         <html lang="en">

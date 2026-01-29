@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import express from "express"
 import ChatSession from "../models/ChatSession.js"
-import { generativeModel } from "../config/vertex.js";
+import { generativeModel, genAIInstance } from "../config/vertex.js";
 import userModel from "../models/User.js";
 import { verifyToken } from "../middleware/authorization.js";
 import { uploadToCloudinary } from "../services/cloudinary.service.js";
@@ -190,38 +190,32 @@ router.post("/", verifyToken, async (req, res) => {
       }
     }
 
-    // Web Search: Check if query requires real-time information or Deep Search is enabled
+    console.log("[DEBUG] Starting Web Search check...");
     let searchResults = null;
     let webSearchInstruction = '';
     const isDeepSearch = systemInstruction && systemInstruction.includes('DEEP SEARCH MODE ENABLED');
 
     if (requiresWebSearch(content) || isDeepSearch) {
       console.log(`[WEB SEARCH] Query requires real-time information${isDeepSearch ? ' (Forced by Deep Search)' : ''}`);
-
       try {
         const searchQuery = extractSearchQuery(content);
         console.log(`[WEB SEARCH] Searching for: "${searchQuery}"`);
 
         const rawSearchData = await performWebSearch(searchQuery, isDeepSearch ? 10 : 5);
-
         if (rawSearchData) {
           const limit = isDeepSearch ? 10 : 5;
           searchResults = processSearchResults(rawSearchData, limit);
           console.log(`[WEB SEARCH] Found ${searchResults.snippets.length} results`);
 
-          // Generate system instruction with search results
           webSearchInstruction = getWebSearchSystemInstruction(searchResults, language || 'English');
-
-          // Inject search results into context
           parts.push({ text: `[WEB SEARCH RESULTS]:\n${JSON.stringify(searchResults.snippets)}` });
           parts.push({ text: `[SEARCH INSTRUCTION]: ${webSearchInstruction}` });
-        } else {
-          console.warn('[WEB SEARCH] No search results found');
         }
       } catch (error) {
-        console.error('[WEB SEARCH] Error performing search:', error);
+        console.error('[WEB SEARCH ERROR]', error);
       }
     }
+    console.log("[DEBUG] Web Search check complete.");
 
     // File Conversion: Check if this is a conversion request
     let conversionResult = null;
@@ -310,15 +304,38 @@ router.post("/", verifyToken, async (req, res) => {
     const maxRetries = 3;
 
     const attemptGeneration = async () => {
-      const streamingResult = await generativeModel.generateContentStream({ contents: [contentPayload] });
-      const response = await streamingResult.response;
-      if (typeof response.text === 'function') {
-        return response.text();
-      } else if (response.candidates && response.candidates.length > 0 && response.candidates[0].content && response.candidates[0].content.parts && response.candidates[0].content.parts.length > 0) {
-        return response.candidates[0].content.parts[0].text;
-      } else {
-        console.warn("Unexpected response format:", JSON.stringify(response));
-        return "";
+      console.log("[GEMINI] Starting generation attempt...");
+
+      const tryModel = async (mName) => {
+        try {
+          console.log(`[GEMINI] Trying model: ${mName}`);
+          // If it's the default model, use it directly, otherwise get it from instance with v1
+          const model = mName === "gemini-1.5-flash-latest" ? generativeModel : genAIInstance.getGenerativeModel({ model: mName }, { apiVersion: 'v1' });
+
+          // Add timeout to prevent hanging
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000));
+          const resultPromise = model.generateContent({ contents: [contentPayload] });
+
+          const result = await Promise.race([resultPromise, timeoutPromise]);
+          const response = await result.response;
+          const text = response.text();
+          if (text) return text;
+          throw new Error("Empty response");
+        } catch (mErr) {
+          console.error(`[GEMINI] Model ${mName} failed:`, mErr.message);
+          throw mErr;
+        }
+      };
+
+      try {
+        return await tryModel("gemini-1.5-flash-latest");
+      } catch (err1) {
+        console.warn("[GEMINI] Falling back to gemini-1.5-pro-latest...");
+        try {
+          return await tryModel("gemini-1.5-pro-latest");
+        } catch (err2) {
+          throw new Error(`All models failed. Last error: ${err2.message}`);
+        }
       }
     };
 
@@ -402,8 +419,8 @@ router.post("/", verifyToken, async (req, res) => {
     return res.status(200).json(finalResponse);
   } catch (err) {
     if (mongoose.connection.readyState !== 1) {
-      console.warn('[DB] MongoDB unreachable during generation. Returning generic success.');
-      return res.status(200).json({ reply: "I'm having trouble connecting to my memory, but I can still chat! (Demo Mode)", detectedMode: 'NORMAL_CHAT' });
+      console.warn('[DB] MongoDB unreachable during generation. Returning translation key.');
+      return res.status(200).json({ reply: "dbDemoModeMessage", detectedMode: 'NORMAL_CHAT' });
     }
     const fs = await import('fs');
     try {
@@ -448,7 +465,10 @@ router.get('/', verifyToken, async (req, res) => {
       options: { sort: { lastModified: -1 } }
     });
 
-    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (!user) {
+      console.warn(`[CHAT SESSION] User ${userId} not found in DB. Returning empty sessions.`);
+      return res.json([]);
+    }
     res.json(user.chatSessions || []);
   } catch (err) {
     console.error(err);
@@ -595,6 +615,78 @@ router.delete('/:sessionId/message/:messageId', verifyToken, async (req, res) =>
   }
 });
 
+
+// Create or Update message in session
+router.post('/:sessionId/message', verifyToken, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { message, title } = req.body;
+    const userId = req.user.id
+
+
+    if (!message?.role || !message?.content) {
+      return res.status(400).json({ error: 'Invalid message format' });
+    }
+
+    // Cloudinary Upload Logic for Multiple Attachments
+    if (message.attachments && Array.isArray(message.attachments)) {
+      for (const attachment of message.attachments) {
+        if (attachment.url && attachment.url.startsWith('data:')) {
+          try {
+            const matches = attachment.url.match(/^data:(.+);base64,(.+)$/);
+            if (matches) {
+              const mimeType = matches[1];
+              const base64Data = matches[2];
+              const buffer = Buffer.from(base64Data, 'base64');
+
+              // Upload to Cloudinary
+              const uploadResult = await uploadToCloudinary(buffer, {
+                resource_type: 'auto',
+                folder: 'chat_attachments',
+                public_id: `chat_${sessionId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+              });
+
+              // Update attachment with Cloudinary URL
+              attachment.url = uploadResult.secure_url;
+            }
+          } catch (uploadError) {
+            console.error("Cloudinary upload failed for attachment:", uploadError);
+          }
+        }
+      }
+    }
+
+    // Check DB connection
+    if (mongoose.connection.readyState !== 1) {
+      console.warn('[DB] MongoDB unreachable. Skipping message save.');
+      return res.json({ sessionId, messages: [message], dummy: true });
+    }
+
+    const session = await ChatSession.findOneAndUpdate(
+      { sessionId },
+      {
+        $push: { messages: message },
+        $set: { lastModified: Date.now(), ...(title && { title }) }
+      },
+      { new: true, upsert: true }
+    );
+
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      // Return success if userId is not valid (e.g. fallback user) to avoid frontend crash
+      return res.json(session);
+    }
+
+    await userModel.findByIdAndUpdate(
+      userId,
+      { $addToSet: { chatSessions: session._id } },
+      { new: true }
+    );
+    res.json(session);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to save message' });
+  }
+});
 
 router.delete('/:sessionId', verifyToken, async (req, res) => {
   try {

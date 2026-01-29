@@ -24,7 +24,16 @@ route.get("/", verifyToken, async (req, res) => {
         }
 
         const user = await userModel.findById(userId).lean();
-        if (!user) return res.status(404).json({ error: "User not found" });
+        if (!user) {
+            console.warn(`[GET USER] User ${userId} not found in DB. Returning fallback user.`);
+            return res.status(200).json({
+                _id: userId,
+                name: req.user.name || "AISA User",
+                email: req.user.email || "user@ai-mall.in",
+                role: "user",
+                personalizations: {}
+            });
+        }
         res.status(200).json(user);
     } catch (error) {
         console.error("[GET USER ERROR]", error);
@@ -42,6 +51,12 @@ route.put("/personalizations", verifyToken, async (req, res) => {
 
         if (!personalizations || typeof personalizations !== 'object') {
             return res.status(400).json({ error: "Invalid personalization data" });
+        }
+
+        // DB Down Fallback
+        if (mongoose.connection.readyState !== 1) {
+            console.log("[DB] MongoDB unreachable. Returning demo response for personalization.");
+            return res.status(200).json(personalizations); // Simulate success for demo mode
         }
 
         const user = await userModel.findById(userId);
@@ -191,6 +206,13 @@ route.delete("/notifications", verifyToken, async (req, res) => {
 route.post("/personalizations/reset", verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
+
+        // DB Down Fallback
+        if (mongoose.connection.readyState !== 1) {
+            console.log("[DB] MongoDB unreachable. Resetting to defaults (localStorage only).");
+            return res.status(200).json({});
+        }
+
         const user = await userModel.findById(userId);
         if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -208,10 +230,10 @@ route.post("/personalizations/reset", verifyToken, async (req, res) => {
 // GET /api/user/all - Admin only, fetch all users with details
 route.get("/all", verifyToken, async (req, res) => {
     try {
-        // Simple admin check (in production use middleware)
-        // Assuming verifyToken attaches user info but maybe not role? 
-        // We'll trust the request or fetch the user to check role if strictly needed.
-        // For now, let's fetch all users.
+        // DB Down Fallback
+        if (mongoose.connection.readyState !== 1) {
+            return res.status(500).json({ error: "Database not connected. Cannot fetch all users." });
+        }
 
         const users = await userModel.find({ role: 'user' })
             .populate('agents', 'agentName pricing')

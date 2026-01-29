@@ -2,7 +2,7 @@ import * as aiService from '../services/ai.service.js';
 import logger from '../utils/logger.js';
 import Conversation from '../models/Conversation.model.js';
 import { uploadToCloudinary } from '../services/cloudinary.service.js';
-import pdf from 'pdf-parse';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
 import xlsx from 'xlsx';
 import officeParser from 'officeparser';

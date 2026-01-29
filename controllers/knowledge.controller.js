@@ -2,7 +2,7 @@ import logger from '../utils/logger.js';
 import path from 'path';
 import stream from 'stream';
 import util from 'util';
-import pdf from 'pdf-parse';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
 import Knowledge from '../models/Knowledge.model.js';
 import * as aiService from '../services/ai.service.js';
 import { uploadToCloudinary } from '../services/cloudinary.service.js';

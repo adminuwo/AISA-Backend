@@ -1,44 +1,28 @@
-import fs from "fs";
-import os from "os";
-import path from "path";
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import 'dotenv/config';
 
-// if (process.env.GOOGLE_CREDENTIALS_BASE64) {
-//   const decodedKey = Buffer.from(
-//     process.env.GOOGLE_CREDENTIALS_BASE64,
-//     "base64"
-//   ).toString("utf-8");
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(apiKey);
 
-//   const tempKeyPath = path.join(os.tmpdir(), "gcp-key.json");
-//   fs.writeFileSync(tempKeyPath, decodedKey);
+// Using stable model name
+const modelName = "gemini-1.5-flash-latest";
 
-//   process.env.GOOGLE_APPLICATION_CREDENTIALS = tempKeyPath;
-// }
-
-
-import {
-  FunctionDeclarationSchemaType,
-  HarmBlockThreshold,
-  HarmCategory,
-  VertexAI
-} from '@google-cloud/vertexai';
-
-const project = process.env.GCP_PROJECT_ID || process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
-const location = 'asia-south1';
-const textModel = 'gemini-2.5-flash';
-const visionModel = 'gemini-2.5-flash';
-
-if (!project) {
-  console.error("❌ Vertex AI Error: GCP_PROJECT_ID not found in environment variables.");
+if (!apiKey) {
+  console.error("❌ Gemini API Error: GEMINI_API_KEY not found in environment variables.");
 } else {
-  console.log(`✅ Vertex AI initializing with Project ID: ${project}`);
+  console.log(`✅ Gemini AI initializing with primary model: ${modelName} (v1)`);
 }
 
-export const vertexAI = new VertexAI({ project: project, location: location });
+export const genAIInstance = genAI; // Export instance for fallback usage
 
-// Instantiate Gemini models
-export const generativeModel = vertexAI.getGenerativeModel({
-  model: textModel,
-  safetySettings: [{ category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE }],
+export const generativeModel = genAI.getGenerativeModel({
+  model: modelName,
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    },
+  ],
   generationConfig: { maxOutputTokens: 4192 },
   systemInstruction: {
     role: 'system',
@@ -86,14 +70,13 @@ Primary objective:
 Support UWO and AI Mall™ users by delivering reliable, practical, and brand-aligned assistance.`
     }]
   },
-});
+}, { apiVersion: 'v1' });
 
-const generativeVisionModel = vertexAI.getGenerativeModel({
-  model: visionModel,
-});
-
-const generativeModelPreview = vertexAI.preview.getGenerativeModel({
-  model: textModel,
-});
+export const vertexAI = {
+  getGenerativeModel: (options) => genAI.getGenerativeModel(options),
+  preview: {
+    getGenerativeModel: (options) => genAI.getGenerativeModel(options)
+  }
+};
 
 export { HarmBlockThreshold, HarmCategory };

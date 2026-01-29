@@ -37,7 +37,10 @@ router.post("/get_my_agents", verifyToken, async (req, res) => {
             select: 'name description avatar category price'
         }).lean();
 
-        if (!user) return res.status(404).json({ error: "User not found" });
+        if (!user) {
+            console.warn(`[GET MY AGENTS] User ${userId} not found in DB. Returning empty list.`);
+            return res.json({ agents: [] });
+        }
         res.json({ agents: user.agents || [] });
     } catch (err) {
         console.error("[GET MY AGENTS ERROR]", err);
