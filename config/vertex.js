@@ -1,26 +1,25 @@
-import {
-  HarmBlockThreshold,
-  HarmCategory,
-  VertexAI
-} from '@google-cloud/vertexai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
+import dotenv from "dotenv";
 
-const project = process.env.GCP_PROJECT_ID || process.env.PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT;
-const location = 'asia-south1';
-const textModel = 'gemini-2.5-flash';
-const visionModel = 'gemini-2.5-flash';
+dotenv.config();
 
-if (!project) {
-  console.error("❌ Vertex AI Error: GCP_PROJECT_ID not found in environment variables.");
-} else {
-  console.log(`✅ Vertex AI initializing with Project ID: ${project}`);
-}
+const apiKey = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(apiKey);
 
-export const vertexAI = new VertexAI({ project: project, location: location });
+// Model name from the proven list_models_simple.js output
+const modelName = "gemini-2.0-flash"; // Validated as working for this account
 
-// Instantiate Gemini models
-export const generativeModel = vertexAI.getGenerativeModel({
-  model: textModel,
-  safetySettings: [{ category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE }],
+// Note: Many of the newer models like gemini-2.5-flash might not be fully supported by all SDK versions yet.
+// gemini-1.5-flash is the most stable.
+
+export const generativeModel = genAI.getGenerativeModel({
+  model: modelName,
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    },
+  ],
   generationConfig: { maxOutputTokens: 4192 },
   systemInstruction: {
     role: 'system',
@@ -70,12 +69,8 @@ Support UWO and AI Mall™ users by delivering reliable, practical, and brand-al
   },
 });
 
-const generativeVisionModel = vertexAI.getGenerativeModel({
-  model: visionModel,
-});
-
-const generativeModelPreview = vertexAI.preview.getGenerativeModel({
-  model: textModel,
-});
+export const vertexAI = {
+  getGenerativeModel: (options) => genAI.getGenerativeModel(options)
+};
 
 export { HarmBlockThreshold, HarmCategory };

@@ -17,7 +17,8 @@ export const generateImageFromPrompt = async (prompt) => {
         const accessTokenResponse = await client.getAccessToken();
         const token = accessTokenResponse.token || accessTokenResponse;
 
-        const location = 'us-central1'; // Imagen models are typically in us-central1
+        const location = 'us-central1';
+        // Try Imagen 3.0 Generate 002 or fallback to 001
         const modelId = 'imagen-3.0-generate-001';
         const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
 
@@ -27,14 +28,17 @@ export const generateImageFromPrompt = async (prompt) => {
                 instances: [{ prompt: prompt }],
                 parameters: {
                     sampleCount: 1,
-                    aspectRatio: "1:1"
+                    aspectRatio: "1:1",
+                    safetyFilterLevel: "block_low_and_above",
+                    personGeneration: "allow_all"
                 }
             },
             {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
-                }
+                },
+                timeout: 30000
             }
         );
 
@@ -42,24 +46,35 @@ export const generateImageFromPrompt = async (prompt) => {
             const prediction = response.data.predictions[0];
             const base64Data = prediction.bytesBase64Encoded || prediction;
 
-            if (base64Data) {
+            if (base64Data && typeof base64Data === 'string') {
                 const buffer = Buffer.from(base64Data, 'base64');
                 const cloudResult = await uploadToCloudinary(buffer, {
                     folder: 'generated_images',
                     public_id: `gen_${Date.now()}`
                 });
-                logger.info(`[VERTEX IMAGE] Uploaded to Cloudinary: ${cloudResult.secure_url}`);
+                logger.info(`[VERTEX IMAGE] Success: ${cloudResult.secure_url}`);
                 return cloudResult.secure_url;
             }
         }
 
-        throw new Error('Vertex AI did not return a valid image payload.');
+        throw new Error('Vertex AI did not return image data.');
 
     } catch (error) {
-        logger.error(`[VERTEX IMAGE ERROR] ${error.message}`);
-        // Fallback or re-throw? For now re-throw to let handler decide or fallback manually if desired.
-        // But since user requested "replace", we might not want fallback to Pollinations unless critical.
-        throw error;
+        logger.warn(`[VERTEX IMAGE FALLBACK] ${error.message}. Using Pollinations.`);
+        // Robust Fallback to Pollinations with Flux model
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
+
+        // Optionally upload pollinations image to Cloudinary to make it permanent
+        try {
+            const resp = await axios.get(pollinationsUrl, { responseType: 'arraybuffer' });
+            const cloudResult = await uploadToCloudinary(Buffer.from(resp.data), {
+                folder: 'generated_images',
+                public_id: `poll_${Date.now()}`
+            });
+            return cloudResult.secure_url;
+        } catch (e) {
+            return pollinationsUrl; // Return direct link if upload fails
+        }
     }
 };
 

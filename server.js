@@ -99,6 +99,7 @@ app.use('/api/auth/verify-email', emailVatifiation);
 app.use('/api/chat', chatRoutes);
 app.use('/api/agents', agentRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/user/notifications', notificationRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/reminders', reminderRoutes);
 

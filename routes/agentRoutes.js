@@ -20,7 +20,12 @@ router.post("/get_my_agents", verifyToken, async (req, res) => {
     try {
         const userId = req.user.id || req.body.userId;
         const user = await User.findById(userId).populate('agents');
-        if (!user) return res.status(404).json({ error: "User not found" });
+
+        if (!user) {
+            console.warn(`[AGENT ROUTE] User not found for ID: ${userId}. Returning empty agents.`);
+            return res.json({ agents: [] });
+        }
+
         res.json({ agents: user.agents || [] });
     } catch (err) {
         console.error("Error fetching user agents:", err);

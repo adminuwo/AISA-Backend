@@ -110,17 +110,21 @@ router.post("/", verifyToken, async (req, res) => {
     // Use mode-specific system instruction, or fallback to provided systemInstruction
     // CRITICAL: FILE_CONVERSION instructions must take priority over frontend generic prompts
     let finalSystemInstruction = systemInstruction || modeSystemInstruction;
-    if (detectedMode === 'FILE_CONVERSION') {
+    if (detectedMode === 'FILE_CONVERSION' || detectedMode === 'FILE_ANALYSIS') {
       finalSystemInstruction = modeSystemInstruction;
     }
 
     if (finalSystemInstruction) {
       parts.push({
-        text: `System Instruction: ${finalSystemInstruction}
+        text: `SYSTEM INSTRUCTION: ${finalSystemInstruction}
       
-      IMPORTANT: If the user explicitly asks to GENERATE A VIDEO (e.g. "create a video of...", "animate this..."), you must output ONLY this JSON object:
-      {"action": "generate_video", "prompt": "detailed visual description for the video"}
-      Do not output any other text or explanation if you are triggering this action.` });
+      MANDATORY: If the user asks to GENERATE AN IMAGE, output ONLY:
+      {"action": "generate_image", "prompt": "detailed description"}
+      
+      MANDATORY: If the user asks to GENERATE A VIDEO, output ONLY:
+      {"action": "generate_video", "prompt": "detailed description"}
+      
+      Do not output any other text or explanation if you are triggering these actions.` });
     }
 
     // Add conversation history if available
@@ -414,38 +418,75 @@ router.post("/", verifyToken, async (req, res) => {
       language: detectedLanguage || language || 'English'
     };
 
-    // Check for Video or Image Generation Action
+    // Check for Media (Video/Image) Generation Action
     try {
-      // Regex to find JSON block if mixed with text, or just parse if full json
-      const jsonRegex = /\{[\s\S]*"action":\s*"(generate_video|generate_image)"[\s\S]*\}/;
+      console.log(`[MEDIA GEN] Analyzing reply: "${reply.substring(0, 100)}..."`);
+
+      // 1. Check for JSON-based triggers
+      const jsonRegex = /\{[\s\S]*?"action":\s*"(generate_video|generate_image)"[\s\S]*?\}/;
       const jsonMatch = reply.match(jsonRegex);
 
       if (jsonMatch) {
-        const data = JSON.parse(jsonMatch[0]);
+        let jsonStr = jsonMatch[0];
+        console.log(`[MEDIA GEN] Found trigger JSON: ${jsonStr}`);
 
-        if (data.action === 'generate_video' && data.prompt) {
-          console.log(`[VIDEO GEN] Detected action for prompt: ${data.prompt}`);
-          const videoUrl = await generateVideoFromPrompt(data.prompt, 5, 'medium');
-          if (videoUrl) {
-            finalResponse.videoUrl = videoUrl;
-            finalResponse.reply = `I have generated a video for you based on: "${data.prompt}"`;
-          } else {
-            finalResponse.reply = "I attempted to generate a video but encountered an error. Please try again.";
+        try {
+          const data = JSON.parse(jsonStr);
+          // REMOVE processed JSON from the reply text immediately to prevent UI from showing it
+          reply = reply.replace(jsonMatch[0], '').trim();
+
+          if (data.action === 'generate_video' && data.prompt) {
+            console.log(`[VIDEO GEN] Calling generator for: ${data.prompt}`);
+            const videoUrl = await generateVideoFromPrompt(data.prompt, 5, 'medium');
+            if (videoUrl) {
+              finalResponse.videoUrl = videoUrl;
+              finalResponse.reply = reply || `Sure, I've generated a video based on your request: "${data.prompt.substring(0, 50)}..."`;
+            } else {
+              finalResponse.reply = reply || "I attempted to generate a video but encountered an error.";
+            }
           }
-        }
-        else if (data.action === 'generate_image' && data.prompt) {
-          console.log(`[IMAGE GEN] Detected action for prompt: ${data.prompt}`);
-          const imageUrl = await generateImageFromPrompt(data.prompt);
-          if (imageUrl) {
-            finalResponse.imageUrl = imageUrl;
-            finalResponse.reply = `I have generated an image for you based on: "${data.prompt}"`;
-          } else {
-            finalResponse.reply = "I attempted to generate an image but encountered an error. Please try again.";
+          else if (data.action === 'generate_image' && data.prompt) {
+            console.log(`[IMAGE GEN] Calling generator for: ${data.prompt}`);
+            // Use a shorter version of prompt for Fallback just in case
+            const safePrompt = data.prompt.length > 400 ? data.prompt.substring(0, 400) : data.prompt;
+
+            try {
+              const imageUrl = await generateImageFromPrompt(data.prompt);
+              if (imageUrl) {
+                finalResponse.imageUrl = imageUrl;
+                finalResponse.reply = reply || "Here is the image you requested.";
+              }
+            } catch (imgError) {
+              console.warn(`[IMAGE GEN] Vertex failed. Falling back to Pollinations.`);
+              const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(safePrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}&model=flux`;
+              finalResponse.imageUrl = pollinationsUrl;
+              finalResponse.reply = reply || "I've generated this image for you using my fallback engine.";
+            }
           }
+        } catch (parseError) {
+          console.error("[MEDIA GEN] Trigger parse failed:", parseError.message);
         }
       }
+
+      // 2. Check for Markdown Image triggers (Support frontend instructions)
+      if (!finalResponse.imageUrl) {
+        const mdImageRegex = /!\[Image\]\((https:\/\/image\.pollinations\.ai\/prompt\/([^?)]+)[^)]*)\)/;
+        const mdMatch = reply.match(mdImageRegex);
+        if (mdMatch) {
+          console.log("[MEDIA GEN] Found Pollinations markdown trigger.");
+          finalResponse.imageUrl = mdMatch[1];
+          // Remove the markdown tag from text to avoid double display
+          reply = reply.replace(mdMatch[0], '').trim();
+          finalResponse.reply = reply;
+        }
+      }
+
+      // Final cleanup: Remove backticks if the model output the JSON inside a code block
+      reply = reply.replace(/```json\s*```|```\s*```/g, '').trim();
+      finalResponse.reply = reply;
+
     } catch (e) {
-      console.warn("[MEDIA GEN] Failed to parse or execute media action:", e);
+      console.warn("[MEDIA GEN] Critical failure in media handling logic:", e);
     }
 
     if (voiceConfirmation) {

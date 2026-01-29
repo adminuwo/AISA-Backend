@@ -14,7 +14,9 @@ const messageSchema = new mongoose.Schema({
     type: { type: String, enum: ['image', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] },
     url: String,
     name: String
-  }]
+  }],
+  imageUrl: String,
+  videoUrl: String
 });
 
 const chatSessionSchema = new mongoose.Schema({
