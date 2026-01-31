@@ -1,6 +1,10 @@
 import mongoose from 'mongoose';
 
 const supportTicketSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+    },
     email: {
         type: String,
         required: true,
@@ -21,10 +25,14 @@ const supportTicketSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['open', 'in_progress', 'resolved', 'closed'],
-        default: 'open'
+        enum: ['pending', 'resolved', 'open', 'in_progress', 'closed'],
+        default: 'pending'
     },
     createdAt: {
+        type: Date,
+        default: Date.now
+    },
+    updatedAt: {
         type: Date,
         default: Date.now
     }

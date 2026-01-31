@@ -1,42 +1,50 @@
-import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
+import { VertexAI } from '@google-cloud/vertexai';
 import 'dotenv/config';
-
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Initialize Vertex AI with system auth or JSON key
+// Dual-mode initialization: Try Gemini API Key first, fallback to Vertex AI
+const apiKey = process.env.GEMINI_API_KEY;
 const projectId = process.env.GCP_PROJECT_ID;
-const location = 'asia-south1'; // User requested location
+const location = 'asia-south1';
 const keyFilePath = path.join(__dirname, '../google_cloud_credentials.json');
 
+let genAI;
 let vertexAI;
-try {
-  vertexAI = new VertexAI({ project: projectId, location: location, keyFilename: keyFilePath });
-} catch (e) {
-  vertexAI = new VertexAI({ project: projectId, location: location });
+let useVertexAI = false;
+
+// Try Gemini API Key first (simpler, more portable)
+if (apiKey) {
+  console.log(`✅ Gemini AI initializing with API Key`);
+  genAI = new GoogleGenerativeAI(apiKey);
+  useVertexAI = false;
+}
+// Fallback to Vertex AI with service account
+else if (projectId) {
+  console.log(`✅ Vertex AI initializing with project: ${projectId}`);
+  try {
+    vertexAI = new VertexAI({ project: projectId, location: location, keyFilename: keyFilePath });
+    useVertexAI = true;
+  } catch (e) {
+    console.warn('⚠️ Vertex AI with keyfile failed, trying system auth...');
+    try {
+      vertexAI = new VertexAI({ project: projectId, location: location });
+      useVertexAI = true;
+    } catch (e2) {
+      console.error('❌ Vertex AI initialization failed:', e2.message);
+    }
+  }
+} else {
+  console.error("❌ Error: Neither GEMINI_API_KEY nor GCP_PROJECT_ID found in environment variables.");
 }
 
-// Fixed Model Name (2.5 doesn't exist yet, using 2.0 or 1.5)
-export const modelName = "gemini-2.5-flash";
+// Model name - use standard Gemini 1.5 Flash (2.5 doesn't exist yet)
+export const modelName = "gemini-1.5-flash";
 
-console.log(`✅ Vertex AI initializing with project: ${projectId} model: ${modelName} (System Auth)`);
-
-export const genAIInstance = vertexAI;
-
-export const generativeModel = vertexAI.getGenerativeModel({
-  model: modelName,
-  safetySettings: [
-    {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    },
-  ],
-  generationConfig: { maxOutputTokens: 4192 },
-  systemInstruction: {
-    role: 'system',
-    parts: [{
-      text: `You are AISA™, the internal intelligent assistant developed and trained under
+const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under
 Unified Web Options & Services (UWO) for the AI Mall™ ecosystem.
 Development and implementation are led by Sanskar Sahu.
 
@@ -78,15 +86,39 @@ Boundaries:
 - If information is uncertain, state limitations without technical or training disclosures
 
 Primary objective:
-Support UWO and AI Mall™ users by delivering reliable, practical, and brand-aligned assistance.`
-    }]
-  },
-});
+Support UWO and AI Mall™ users by delivering reliable, practical, and brand-aligned assistance.`;
 
-export const vertexAIExport = {
-  getGenerativeModel: (options) => vertexAI.getGenerativeModel(options),
-  preview: {
+// Create generative model based on available initialization
+export const generativeModel = useVertexAI
+  ? vertexAI.preview.getGenerativeModel({
+    model: modelName,
+    safetySettings: [
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ],
+    generationConfig: { maxOutputTokens: 4096 },
+    systemInstruction: systemInstructionText,
+  })
+  : genAI.getGenerativeModel({
+    model: modelName,
+    safetySettings: [
+      {
+        category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+      },
+    ],
+    generationConfig: { maxOutputTokens: 4096 },
+    systemInstruction: systemInstructionText,
+  });
+
+// Export genAI instance for multi-model support in chatRoutes
+export const genAIInstance = useVertexAI
+  ? {
     getGenerativeModel: (options) => vertexAI.preview.getGenerativeModel(options)
   }
-};
-export { vertexAIExport as vertexAI };
+  : genAI;
+
+// Export vertexAI for compatibility (mock if using Gemini API)
+export { vertexAI };
