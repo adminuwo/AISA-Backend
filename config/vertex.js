@@ -1,36 +1,23 @@
-import { VertexAI, HarmCategory, HarmBlockThreshold } from '@google-cloud/vertexai';
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
 import 'dotenv/config';
 
-// Initialize Vertex AI with system auth (ADC)
-const projectId = process.env.GCP_PROJECT_ID;
-const location = 'asia-south1'; // User requested location
+// Initialize Gemini AI with API Key
+const apiKey = process.env.GEMINI_API_KEY;
 
-if (!projectId) {
-  console.error("❌ Vertex AI Error: GCP_PROJECT_ID not found in environment variables.");
+if (!apiKey) {
+  console.error("❌ Gemini Error: GEMINI_API_KEY not found in environment variables.");
 }
 
-const vertexAI = new VertexAI({ project: projectId, location: location });
+const genAI = new GoogleGenerativeAI(apiKey);
 
 // User requested model
-export const modelName = "gemini-2.5-flash";
+export const modelName = "gemini-1.5-flash"; // updated to standard model name
 
-console.log(`✅ Vertex AI initializing with project: ${projectId} model: ${modelName} (System Auth)`);
+console.log(`✅ Gemini AI initializing with API Key`);
 
-export const genAIInstance = vertexAI;
+export const genAIInstance = genAI;
 
-export const generativeModel = vertexAI.getGenerativeModel({
-  model: modelName,
-  safetySettings: [
-    {
-      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
-    },
-  ],
-  generationConfig: { maxOutputTokens: 4192 },
-  systemInstruction: {
-    role: 'system',
-    parts: [{
-      text: `You are AISA™, the internal intelligent assistant developed and trained under
+const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under
 Unified Web Options & Services (UWO) for the AI Mall™ ecosystem.
 Development and implementation are led by Sanskar Sahu.
 
@@ -72,15 +59,25 @@ Boundaries:
 - If information is uncertain, state limitations without technical or training disclosures
 
 Primary objective:
-Support UWO and AI Mall™ users by delivering reliable, practical, and brand-aligned assistance.`
-    }]
-  },
+Support UWO and AI Mall™ users by delivering reliable, practical, and brand-aligned assistance.`;
+
+export const generativeModel = genAI.getGenerativeModel({
+  model: modelName,
+  safetySettings: [
+    {
+      category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+      threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+    },
+  ],
+  generationConfig: { maxOutputTokens: 4096 }, // Standard limit
+  systemInstruction: systemInstructionText,
 });
 
-export const vertexAIExport = {
-  getGenerativeModel: (options) => vertexAI.getGenerativeModel(options),
+// Mock export to maintain compatibility if anything imports 'vertexAI' specifically
+export const vertexAI = {
+  getGenerativeModel: (options) => genAI.getGenerativeModel(options),
   preview: {
-    getGenerativeModel: (options) => vertexAI.preview.getGenerativeModel(options)
+    getGenerativeModel: (options) => genAI.getGenerativeModel(options)
   }
 };
-export { vertexAIExport as vertexAI }; 
+

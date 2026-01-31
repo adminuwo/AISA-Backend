@@ -283,7 +283,7 @@ router.post("/", optionalVerifyToken, async (req, res) => {
           searchResults = processSearchResults(rawSearchData, limit);
           console.log(`[WEB SEARCH] Found ${searchResults.snippets.length} results`);
 
-          webSearchInstruction = getWebSearchSystemInstruction(searchResults, language || 'English');
+          webSearchInstruction = getWebSearchSystemInstruction(searchResults, language || 'English', isDeepSearch);
           parts.push({ text: `[WEB SEARCH RESULTS]:\n${JSON.stringify(searchResults.snippets)}` });
           parts.push({ text: `[SEARCH INSTRUCTION]: ${webSearchInstruction}` });
         }
@@ -884,6 +884,31 @@ router.post('/:sessionId/message', verifyToken, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to save message' });
+  }
+});
+
+// Update chat session title
+router.patch('/:sessionId/title', verifyToken, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { title } = req.body;
+
+    if (!title) return res.status(400).json({ error: 'Title is required' });
+
+    if (mongoose.connection.readyState !== 1) {
+      return res.json({ message: 'Title updated (Mock)' });
+    }
+
+    const session = await ChatSession.findOneAndUpdate(
+      { sessionId },
+      { $set: { title, lastModified: Date.now() } },
+      { new: true }
+    );
+
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+    res.json(session);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

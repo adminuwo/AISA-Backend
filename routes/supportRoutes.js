@@ -5,13 +5,14 @@ const router = express.Router();
 
 router.post('/', async (req, res) => {
     try {
-        const { email, issueType, message, userId } = req.body;
+        const { name, email, issueType, message, userId } = req.body;
 
-        if (!email || !issueType || !message) {
+        if (!name || !email || !issueType || !message) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
         const newTicket = new SupportTicket({
+            name,
             email,
             issueType,
             message,

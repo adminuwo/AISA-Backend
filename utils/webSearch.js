@@ -139,8 +139,23 @@ export function formatSources(snippets) {
 /**
  * Generate web search system instruction
  */
-export function getWebSearchSystemInstruction(searchResults, language = 'English') {
+export function getWebSearchSystemInstruction(searchResults, language = 'English', isDeepSearch = false) {
     const responseLanguage = language === 'Hindi' || language === 'Hinglish' ? 'Hinglish' : 'English';
+
+    // Deep Search specific instructions
+    const deepSearchInstructions = isDeepSearch ? `
+    DEEP SEARCH MODE: ACTIVATED
+    - You must provide a HIGHLY DETAILED, COMPREHENSIVE, AND EXTENSIVE answer.
+    - Break down complex topics into clear sections.
+    - Provide in-depth analysis, background context, and future implications if applicable.
+    - The user specifically requested a "Deep Search", so a short answer is a failure.
+    - Aim for a thorough explanation (minimum 4-5 paragraphs if the topic allows).
+    - If the search results are limited or MOCK data is detected, use your internal knowledge to supplement the answer extensively, but clearly distinguish between search data and internal knowledge.
+    ` : `
+    - Clear and concise
+    - Professional tone
+    - Natural source citations
+    `;
 
     return `You are AISA™, an AI Super Assistant with real-time information awareness.
 
@@ -152,25 +167,22 @@ ${searchResults.snippets.map((s, i) => `${i + 1}. ${s.title}
    Source: ${s.source}`).join('\n\n')}
 
 CRITICAL INSTRUCTIONS:
-- Base your answer ONLY on the provided web search results
-- Do NOT use general knowledge or assumptions
-- Provide a clear, direct answer
-- ALWAYS mention sources naturally in your response
-- If sources conflict, mention the variation
-- If data is incomplete, say so honestly
+- Base your answer primarily on the provided web search results.
+- ${isDeepSearch ? 'For Deep Search, you MAY use internal knowledge to expand on the search results to ensure a comprehensive answer.' : 'Do NOT use general knowledge or assumptions unless necessary to make sense of the search results.'}
+- Provide a clear, direct answer.
+- ALWAYS mention sources naturally in your response.
+- If sources conflict, mention the variation.
 
 RESPONSE LANGUAGE: ${responseLanguage}
 
 ANSWER STRUCTURE:
 1. Direct answer to the question
-2. Brief explanation if needed
-3. Source attribution (mention source names naturally)
+2. ${isDeepSearch ? 'Detailed Explanation & Analysis (Long Form)' : 'Brief explanation'}
+3. ${isDeepSearch ? 'Key Takeaways or Context' : ''}
+4. Source attribution (mention source names naturally)
 
 OUTPUT STYLE:
-- Clear and concise
-- Professional tone
-- No emojis or decorative symbols
-- Natural source citations
+${deepSearchInstructions}
 
 Example: "According to BBC News and Reuters, the current price is..."`;
 }

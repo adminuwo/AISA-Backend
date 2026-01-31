@@ -30,6 +30,7 @@ import reminderRoutes from './routes/reminderRoutes.js';
 import imageRoutes from './routes/image.routes.js';
 import videoRoutes from './routes/videoRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
 
 // End of standard imports
 
@@ -106,8 +107,11 @@ app.use('/api/personal-assistant', personalTaskRoutes);
 
 // Business & Dashboard
 app.use('/api/payment', paymentRoutes);
-app.use('/api/dashboard', dashboardRoutes); // More specific prefix
-app.use('/api', dashboardRoutes); // Fallback for old /api/stats style
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api', dashboardRoutes);
+
+// Admin Panel (Admin only)
+app.use('/api/admin', adminRoutes);
 
 // AIBASE (V3) - Cleaned up
 app.use('/api/aibase/chat', chatRoute);
