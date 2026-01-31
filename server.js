@@ -145,4 +145,4 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 // Keep process alive for local development
-setInterval(() => { }, 1000 * 60 * 60);
+setInterval(() => { }, 1000 * 60 * 60); // Keep alive process
