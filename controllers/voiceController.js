@@ -14,17 +14,28 @@ const __dirname = path.dirname(__filename);
 const keyFilename = path.join(__dirname, '../google_cloud_credentials.json');
 
 // Initialize the client if key exists
+// Initialize the client
 let client = null;
-if (fs.existsSync(keyFilename)) {
-    try {
+
+try {
+    if (fs.existsSync(keyFilename)) {
         client = new textToSpeech.TextToSpeechClient({ keyFilename });
-        console.log("✅ [VoiceController] Google Cloud TTS Client Initialized");
-    } catch (err) {
-        console.error("❌ [VoiceController] Failed to initialize TTS Client:", err.message);
+        console.log("✅ [VoiceController] Google Cloud TTS Client Initialized with Key File");
+    } else {
+        console.warn("⚠️ [VoiceController] Key file not found, attempting ADC...");
+        // Fallback to ADC
+        client = new textToSpeech.TextToSpeechClient();
+        console.log("✅ [VoiceController] Google Cloud TTS Client Initialized with ADC");
     }
-} else {
-    console.warn("⚠️ [VoiceController] Google Cloud Service Account Key not found at:", keyFilename);
-    console.warn("⚠️ [VoiceController] Voice features will require frontend fallback.");
+} catch (err) {
+    console.warn("⚠️ [VoiceController] Failed to initialize TTS Client:", err.message);
+    try {
+        // Last ditch effort: Try ADC if key file init failed
+        client = new textToSpeech.TextToSpeechClient();
+        console.log("✅ [VoiceController] Google Cloud TTS Client Initialized with ADC (Fallback)");
+    } catch (finalErr) {
+        console.error("❌ [VoiceController] Critical: TTS Client Init Failed:", finalErr.message);
+    }
 }
 
 export const synthesizeSpeech = async (req, res) => {
