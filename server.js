@@ -35,7 +35,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8080;
 
 console.log("--- STARTUP DEBUG ---");
 console.log("PORT from env:", process.env.PORT);

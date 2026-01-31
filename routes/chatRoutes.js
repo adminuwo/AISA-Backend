@@ -3,7 +3,7 @@ import express from "express"
 import ChatSession from "../models/ChatSession.js"
 import { generativeModel, genAIInstance, modelName as primaryModelName } from "../config/vertex.js";
 import userModel from "../models/User.js";
-import { verifyToken } from "../middleware/authorization.js";
+import { verifyToken, optionalVerifyToken } from "../middleware/authorization.js";
 import { uploadToCloudinary } from "../services/cloudinary.service.js";
 import mammoth from "mammoth";
 import { detectMode, getModeSystemInstruction } from "../utils/modeDetection.js";
@@ -20,7 +20,7 @@ import axios from "axios";
 
 const router = express.Router();
 // Get all chat sessions (summary)
-router.post("/", verifyToken, async (req, res) => {
+router.post("/", optionalVerifyToken, async (req, res) => {
   const { content, history, systemInstruction, image, video, document, language, model } = req.body;
 
   try {
@@ -229,31 +229,37 @@ router.post("/", verifyToken, async (req, res) => {
         console.log('[VOICE ASSISTANT] Reminder details:', reminderData);
 
         // Save reminder to database
-        const newReminder = new Reminder({
-          userId: req.user.id,
-          title: reminderData.title,
-          datetime: reminderData.datetime,
-          notification: reminderData.notification,
-          alarm: reminderData.alarm,
-          voice: reminderData.voice,
-          voiceMessage: reminderData.voice_message,
-          intent: reminderData.intent
-        });
-        await newReminder.save();
-        console.log('[VOICE ASSISTANT] Reminder saved to DB:', newReminder._id);
+        if (req.user) {
+          // Save reminder to database (Only for logged-in users)
+          const newReminder = new Reminder({
+            userId: req.user.id,
+            title: reminderData.title,
+            datetime: reminderData.datetime,
+            notification: reminderData.notification,
+            alarm: reminderData.alarm,
+            voice: reminderData.voice,
+            voiceMessage: reminderData.voice_message,
+            intent: reminderData.intent
+          });
+          await newReminder.save();
+          console.log('[VOICE ASSISTANT] Reminder saved to DB:', newReminder._id);
 
-        // Generate voice-friendly confirmation
-        const time = new Date(reminderData.datetime).toLocaleTimeString('en-IN', {
-          hour: '2-digit',
-          minute: '2-digit',
-          hour12: true
-        });
-        const date = new Date(reminderData.datetime).toLocaleDateString('en-IN');
+          // Generate voice-friendly confirmation
+          const time = new Date(reminderData.datetime).toLocaleTimeString('en-IN', {
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          });
+          const date = new Date(reminderData.datetime).toLocaleDateString('en-IN');
 
-        if (detectedLanguage === 'Hinglish' || detectedLanguage === 'Hindi') {
-          voiceConfirmation = `Okay, main ${time} par ${reminderData.alarm ? 'alarm aur ' : ''}${reminderData.voice ? 'voice ke saath ' : ''}reminder set kar dungi`;
+          if (detectedLanguage === 'Hinglish' || detectedLanguage === 'Hindi') {
+            voiceConfirmation = `Okay, main ${time} par ${reminderData.alarm ? 'alarm aur ' : ''}${reminderData.voice ? 'voice ke saath ' : ''}reminder set kar dungi`;
+          } else {
+            voiceConfirmation = `Okay, I'll set a ${reminderData.alarm ? 'alarm and ' : ''}${reminderData.voice ? 'voice ' : ''}reminder for ${time}`;
+          }
         } else {
-          voiceConfirmation = `Okay, I'll set a ${reminderData.alarm ? 'alarm and ' : ''}${reminderData.voice ? 'voice ' : ''}reminder for ${time}`;
+          console.log('[VOICE ASSISTANT] Guest user - skipping reminder save.');
+          voiceConfirmation = "I can only set reminders for logged-in users. Please log in to use this feature.";
         }
       } catch (error) {
         console.error('[VOICE ASSISTANT] Error extracting/saving reminder:', error);
