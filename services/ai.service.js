@@ -77,24 +77,27 @@ export const storeDocument = async (text, docId = null) => {
     }
 };
 
-export const chat = async (message, activeDocContent = null) => {
+export const chat = async (message, activeDocContent = null, options = {}) => {
     try {
         if (!message || typeof message !== 'string') {
             message = String(message || "");
         }
 
-        // PRIORITY 1: Chat-Uploaded Document
-        if (activeDocContent && activeDocContent.length > 0) {
-            logger.info("[Chat Routing] Using Active Chat Document (Priority 1). Skipping RAG.");
-            // Pass the document text directly. 
-            // We prepend a special marker text so GroqService knows it's a Chat Doc vs Company Doc?
-            // Actually GroqService just takes context. We can handle labeling here if we want, or just rely on context prompt.
-            // Let's rely on GroqService, but we need to tell it SOURCE via prompt?
-            // Simpler: Just rely on context.
-            // Wait, we need to label it "📄 From Chat-Uploaded Document". 
-            // GroqService logic uses "📄 From Your Document" generally. We might want to customize labeling.
-            // For now, let's just pass context. The generic "From Your Document" fits this use case well.
-            return await vertexService.askVertex(message, activeDocContent);
+        // Extract options
+        const { systemInstruction, mode, images, documents } = options;
+
+        // PRIORITY 1: Chat-Uploaded Document and System Instructions
+        // If we have specific system instructions (like Conversion Mode), we prioritize passing them.
+        if (systemInstruction || (activeDocContent && activeDocContent.length > 0) || (images && images.length > 0)) {
+            logger.info("[Chat Routing] Using Custom Request (System Instruction / Active Doc / Images).");
+
+            // Pass all context to vertexService
+            return await vertexService.askVertex(message, activeDocContent, {
+                systemInstruction,
+                mode,
+                images,
+                documents
+            });
         }
 
         // PRIORITY 2: Company Knowledge Base (RAG)

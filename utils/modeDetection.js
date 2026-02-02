@@ -9,7 +9,8 @@ const MODES = {
   FILE_CONVERSION: 'FILE_CONVERSION',
   CONTENT_WRITING: 'CONTENT_WRITING',
   CODING_HELP: 'CODING_HELP',
-  TASK_ASSISTANT: 'TASK_ASSISTANT'
+  TASK_ASSISTANT: 'TASK_ASSISTANT',
+  DEEP_SEARCH: 'DEEP_SEARCH'
 };
 
 const CODING_KEYWORDS = [
@@ -180,60 +181,36 @@ REMEMBER: "SAME TO SAME". The output language must match the input document lang
 
 MODE: FILE_CONVERSION
 
-CRITICAL RESPONSE RULES:
-- Be EXTREMELY brief and direct
-- Output ONLY the JSON and ONE short confirmation line
-- Do NOT analyze the document
-- Do NOT provide document details
-- Do NOT explain what conversion does
-- Do NOT add extra information
+Your SOLE purpose is to output a JSON verification object to trigger a file conversion utility.
+You generally receive a file and a user command like "convert to pdf".
 
-SUPPORTED CONVERSIONS:
-- PDF → DOCX
-- DOCX → PDF
+CRITICAL INSTRUCTIONS:
+1. IGNORE TYPOS: Treat "ot" as "to", "duc" as "doc", "pfd" as "pdf", etc.
+2. DETECT FORMATS:
+   - Identify source format from the attached file name or extension.
+   - Identify target format from user's text.
+3. DEFAULTS:
+   - If User says "convert this" (no target specified):
+     - If source is PDF -> Target is DOCX
+     - If source is DOCX -> Target is PDF
 
-OUTPUT FORMAT (STRICT):
-You MUST output EXACTLY this format:
+OUTPUT FORMAT (STRICT JSON ONLY):
+Do not speak. Do not add markdown text outside the JSON.
+Output EXACTLY this JSON structure:
 
 {
   "action": "file_conversion",
-  "source_format": "docx",
-  "target_format": "pdf",
-  "file_name": "filename.docx"
+  "source_format": "pdf",   // or "docx"
+  "target_format": "docx",  // or "pdf"
+  "file_name": "original_filename.pdf"
 }
-
-Here is your converted PDF file.
 
 EXAMPLES:
+User: "convert ot doc" (Attached: file.pdf)
+Output: {"action": "file_conversion", "source_format": "pdf", "target_format": "docx", "file_name": "file.pdf"}
 
-User: "convert this doc to pdf"
-Response:
-{
-  "action": "file_conversion",
-  "source_format": "docx",
-  "target_format": "pdf",
-  "file_name": "document.docx"
-}
-
-Here is your converted PDF file.
-
-User: "pdf ko word me convert karo"
-Response:
-{
-  "action": "file_conversion",
-  "source_format": "pdf",
-  "target_format": "docx",
-  "file_name": "document.pdf"
-}
-
-Yeh rahi aapki converted Word file.
-
-FORBIDDEN:
-- Do NOT say "Analysis of..."
-- Do NOT describe document content
-- Do NOT provide summaries
-- Do NOT add explanations
-- Do NOT use emojis
+User: "make pdf" (Attached: letter.docx)
+Output: {"action": "file_conversion", "source_format": "docx", "target_format": "pdf", "file_name": "letter.docx"}
 
 ${languageRule}`;
 
@@ -380,7 +357,8 @@ export function getModeName(mode) {
     [MODES.FILE_CONVERSION]: 'File Conversion',
     [MODES.CONTENT_WRITING]: 'Content Writing',
     [MODES.CODING_HELP]: 'Coding Help',
-    [MODES.TASK_ASSISTANT]: 'Task Assistant'
+    [MODES.TASK_ASSISTANT]: 'Task Assistant',
+    [MODES.DEEP_SEARCH]: 'Deep Search'
   };
   return names[mode] || 'Chat';
 }

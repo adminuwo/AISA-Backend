@@ -21,7 +21,7 @@ import axios from "axios";
 const router = express.Router();
 // Get all chat sessions (summary)
 router.post("/", optionalVerifyToken, async (req, res) => {
-  const { content, history, systemInstruction, image, video, document, language, model } = req.body;
+  const { content, history, systemInstruction, image, video, document, language, model, mode } = req.body;
 
   try {
     // --- MULTI-MODEL DISPATCHER ---
@@ -97,7 +97,8 @@ router.post("/", optionalVerifyToken, async (req, res) => {
     if (Array.isArray(video)) allAttachments.push(...video);
     else if (video) allAttachments.push(video);
 
-    const detectedMode = detectMode(content, allAttachments);
+    let detectedMode = mode || detectMode(content, allAttachments);
+    if (detectedMode === 'DOCUMENT_CONVERT') detectedMode = 'FILE_CONVERSION';
     const modeSystemInstruction = getModeSystemInstruction(detectedMode, language || 'English', {
       fileCount: allAttachments.length
     });
@@ -112,19 +113,17 @@ router.post("/", optionalVerifyToken, async (req, res) => {
     let finalSystemInstruction = systemInstruction || modeSystemInstruction;
     if (detectedMode === 'FILE_CONVERSION' || detectedMode === 'FILE_ANALYSIS') {
       finalSystemInstruction = modeSystemInstruction;
-    }
+    } else {
+      // Only add standard rules for non-specialized modes to avoid instruction collision
+      const MANDATORY_JSON_RULES = `
+MANDATORY: If the user asks to GENERATE AN IMAGE, output ONLY:
+{"action": "generate_image", "prompt": "detailed description"}
 
-    if (finalSystemInstruction) {
-      parts.push({
-        text: `SYSTEM INSTRUCTION: ${finalSystemInstruction}
-      
-      MANDATORY: If the user asks to GENERATE AN IMAGE, output ONLY:
-      {"action": "generate_image", "prompt": "detailed description"}
-      
-      MANDATORY: If the user asks to GENERATE A VIDEO, output ONLY:
-      {"action": "generate_video", "prompt": "detailed description"}
-      
-      Do not output any other text or explanation if you are triggering these actions.` });
+MANDATORY: If the user asks to GENERATE A VIDEO, output ONLY:
+{"action": "generate_video", "prompt": "detailed description"}
+
+Do not output any other text or explanation if you are triggering these actions.`;
+      finalSystemInstruction = `${finalSystemInstruction}\n\n${MANDATORY_JSON_RULES}`;
     }
 
     // Add conversation history if available
@@ -189,22 +188,36 @@ router.post("/", optionalVerifyToken, async (req, res) => {
     }
 
     async function processDocumentPart(doc, partsArray) {
-      if (doc.mimeType === 'application/pdf') {
+      const mimeType = doc.mimeType || 'application/pdf';
+
+      // For PDF and Word documents, we can pass binary data to Gemini 1.5
+      if (mimeType === 'application/pdf' || mimeType.includes('word') || mimeType.includes('officedocument.wordprocessingml')) {
         partsArray.push({
           inlineData: {
             data: doc.base64Data,
-            mimeType: 'application/pdf'
+            mimeType: mimeType
           }
         });
-      } else if (doc.mimeType && (doc.mimeType.includes('word') || doc.mimeType.includes('document') || doc.mimeType.includes('text') || doc.mimeType.includes('spreadsheet') || doc.mimeType.includes('presentation'))) {
+
+        // Also extract text as fallback/context for Word docs
+        if (mimeType.includes('word') || mimeType.includes('officedocument')) {
+          try {
+            const buffer = Buffer.from(doc.base64Data, 'base64');
+            const result = await mammoth.extractRawText({ buffer });
+            if (result.value) {
+              partsArray.push({ text: `[Fallback Text Content of ${doc.name || 'document'}]:\n${result.value}` });
+            }
+          } catch (e) {
+            console.warn("Text extraction fallback failed, using binary only", e.message);
+          }
+        }
+      } else if (doc.mimeType && (doc.mimeType.includes('text') || doc.mimeType.includes('spreadsheet') || doc.mimeType.includes('presentation'))) {
         try {
           const buffer = Buffer.from(doc.base64Data, 'base64');
-          let text = '';
-          if (doc.mimeType.includes('word') || doc.mimeType.includes('document')) {
-            const result = await mammoth.extractRawText({ buffer });
-            text = result.value;
-          } else {
-            text = `[Attached File: ${doc.name || 'document'}]`;
+          let text = `[Attached File: ${doc.name || 'document'}]`;
+          if (doc.mimeType.includes('spreadsheet') || doc.mimeType.includes('excel')) {
+            // Basic indicator for excel, complex parsing omitted for brevity
+            text = `[Attached Spreadsheet: ${doc.name || 'document'}]`;
           }
           partsArray.push({ text: `[Attached Document Content (${doc.name || 'document'})]:\n${text}` });
         } catch (e) {
@@ -298,16 +311,30 @@ router.post("/", optionalVerifyToken, async (req, res) => {
 
     if (detectedMode === 'FILE_CONVERSION') {
       console.log('[FILE CONVERSION] Conversion request detected');
+      console.log(`[FILE CONVERSION] Attachments count: ${allAttachments.length}`);
 
       // First, get AI response to extract conversion parameters
+      // We pass the full parts + explicit instruction to be super clear
       const tempContentPayload = { role: "user", parts: parts };
-      const tempStreamingResult = await generativeModel.generateContentStream({ contents: [tempContentPayload] });
+      const modelForParams = genAIInstance.getGenerativeModel({
+        model: primaryModelName,
+        systemInstruction: finalSystemInstruction
+      });
+
+      const tempStreamingResult = await modelForParams.generateContent({
+        contents: [tempContentPayload],
+        generationConfig: { maxOutputTokens: 1024 }
+      });
       const tempResponse = await tempStreamingResult.response;
       let aiResponse = "";
-      if (typeof tempResponse.text === 'function') {
-        aiResponse = tempResponse.text();
-      } else if (tempResponse.candidates && tempResponse.candidates.length > 0 && tempResponse.candidates[0].content && tempResponse.candidates[0].content.parts && tempResponse.candidates[0].content.parts.length > 0) {
-        aiResponse = tempResponse.candidates[0].content.parts[0].text;
+      try {
+        if (typeof tempResponse.text === 'function') {
+          aiResponse = await tempResponse.text();
+        } else if (tempResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
+          aiResponse = tempResponse.candidates[0].content.parts[0].text;
+        }
+      } catch (e) {
+        console.error('[FILE CONVERSION] Error getting text from response:', e);
       }
 
       console.log('[FILE CONVERSION] AI Response:', aiResponse);
@@ -369,6 +396,12 @@ router.post("/", optionalVerifyToken, async (req, res) => {
             error: conversionError.message
           };
         }
+      } else {
+        console.log('[FILE CONVERSION] NO JSON MATCH found in AI response. AI said:', aiResponse.substring(0, 200));
+        conversionResult = {
+          success: false,
+          error: "AI did not trigger conversion parameters. Please be more specific (e.g., 'Convert this to PDF')."
+        };
       }
     }
 
@@ -385,8 +418,11 @@ router.post("/", optionalVerifyToken, async (req, res) => {
       const tryModel = async (mName) => {
         try {
           console.log(`[GEMINI] Trying model: ${mName}`);
-          // If it's the default model, use it directly, otherwise get it from instance with v1
-          const model = (mName === primaryModelName || mName === "gemini-1.5-flash-001" || mName === "gemini-1.5-flash-latest") ? generativeModel : genAIInstance.getGenerativeModel({ model: mName });
+          // Always create fresh model instance with correct system instruction
+          const model = genAIInstance.getGenerativeModel({
+            model: mName,
+            systemInstruction: finalSystemInstruction
+          });
 
           // Add timeout to prevent hanging
           const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000));

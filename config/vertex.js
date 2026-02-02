@@ -41,7 +41,7 @@ else if (projectId) {
   console.error("❌ Error: Neither GEMINI_API_KEY nor GCP_PROJECT_ID found in environment variables.");
 }
 
-// Model name - use standard Gemini 1.5 Flash (2.5 doesn't exist yet)
+// Model name - use standard Gemini 1.5 Flash
 export const modelName = "gemini-2.5-flash";
 
 const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under

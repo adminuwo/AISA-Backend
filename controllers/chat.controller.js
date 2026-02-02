@@ -14,14 +14,19 @@ import Tesseract from 'tesseract.js';
 // @access  Public (for now)
 export const chat = async (req, res, next) => {
     try {
-        const { message, conversationId, activeDocContent } = req.body;
+        const { message, conversationId, activeDocContent, systemInstruction, mode, image, document } = req.body;
 
-        if (!message) {
-            return res.status(400).json({ success: false, message: 'Message is required' });
+        if (!message && (!image || image.length === 0) && (!document || document.length === 0)) {
+            return res.status(400).json({ success: false, message: 'Message or attachment is required' });
         }
 
-        // 1. Get AI Response (Pass activeDocContent if available)
-        const responseText = await aiService.chat(message, activeDocContent);
+        // 1. Get AI Response (Pass detailed context)
+        const responseText = await aiService.chat(message, activeDocContent, {
+            systemInstruction,
+            mode,
+            images: image,
+            documents: document
+        });
 
         // 2. Persist to DB
         let conversation;
