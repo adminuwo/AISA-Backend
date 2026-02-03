@@ -509,14 +509,10 @@ Do not output any other text or explanation if you are triggering these actions.
       };
 
       try {
-        return await tryModel(primaryModelName || "gemini-1.5-flash-001");
-      } catch (err1) {
-        console.warn("[GEMINI] Falling back to gemini-1.5-flash...");
-        try {
-          return await tryModel("gemini-1.5-flash-002");
-        } catch (err2) {
-          throw new Error(`All models failed. Last error: ${err2.message}`);
-        }
+        // Enforce gemini-2.5-flash as requested
+        return await tryModel(primaryModelName || "gemini-2.5-flash");
+      } catch (err) {
+        throw new Error(`Model generation failed: ${err.message}`);
       }
     };
 

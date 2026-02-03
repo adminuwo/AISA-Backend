@@ -9,7 +9,7 @@ async function listModels() {
     const vertexAI = new VertexAI({ project: projectId, location: location });
 
     // Test older stable model
-    const model = 'gemini-1.0-pro';
+    const model = 'gemini-2.5-flash';
 
     try {
         console.log(`Checking ${model} in ${location}...`);
