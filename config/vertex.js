@@ -42,7 +42,7 @@ else if (projectId) {
 }
 
 // Model name - use standard Gemini 1.5 Flash
-export const modelName = "gemini-1.5-flash";
+export const modelName = "gemini-2.5-flash";
 
 const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under
 Unified Web Options & Services (UWO) for the AI Mall™ ecosystem.
