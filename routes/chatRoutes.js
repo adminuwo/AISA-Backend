@@ -315,29 +315,29 @@ Do not output any other text or explanation if you are triggering these actions.
 
       // First, get AI response to extract conversion parameters
       // We pass the full parts + explicit instruction to be super clear
-      const tempContentPayload = { role: "user", parts: parts };
-      const modelForParams = genAIInstance.getGenerativeModel({
-        model: primaryModelName,
-        systemInstruction: finalSystemInstruction
-      });
-
-      const tempStreamingResult = await modelForParams.generateContent({
-        contents: [tempContentPayload],
-        generationConfig: { maxOutputTokens: 1024 }
-      });
-      const tempResponse = await tempStreamingResult.response;
       let aiResponse = "";
       try {
+        const tempContentPayload = { role: "user", parts: parts };
+        const modelForParams = genAIInstance.getGenerativeModel({
+          model: primaryModelName,
+          systemInstruction: finalSystemInstruction
+        });
+
+        const tempStreamingResult = await modelForParams.generateContent({
+          contents: [tempContentPayload],
+          generationConfig: { maxOutputTokens: 1024 }
+        });
+        const tempResponse = await tempStreamingResult.response;
+
         if (typeof tempResponse.text === 'function') {
           aiResponse = await tempResponse.text();
         } else if (tempResponse.candidates?.[0]?.content?.parts?.[0]?.text) {
           aiResponse = tempResponse.candidates[0].content.parts[0].text;
         }
+        console.log('[FILE CONVERSION] AI Response:', aiResponse);
       } catch (e) {
-        console.error('[FILE CONVERSION] Error getting text from response:', e);
+        console.error('[FILE CONVERSION] Failed to get AI parameters (will use fallback):', e.message);
       }
-
-      console.log('[FILE CONVERSION] AI Response:', aiResponse);
 
       // Try to extract JSON from AI response (handle markdown backticks too)
       let jsonMatch = null;
@@ -382,6 +382,29 @@ Do not output any other text or explanation if you are triggering these actions.
         } catch (e) {
           console.warn("[FILE CONVERSION] Fallback parse failed", e);
         }
+      }
+
+      // --- DETERMINISTIC FALLBACK (If AI extracted nothing) ---
+      if (!conversionParams && allAttachments.length > 0) {
+        console.warn("[FILE CONVERSION] AI failed to extract params. Using deterministic logic.");
+        const att = allAttachments[0];
+        const name = att.name || 'document';
+        const ext = name.split('.').pop().toLowerCase();
+
+        let target = 'pdf';
+        let source = ext;
+
+        if (ext === 'pdf') target = 'docx';
+        else if (['doc', 'docx'].includes(ext)) target = 'pdf';
+        else if (['jpg', 'jpeg', 'png', 'webp', 'xls', 'xlsx'].includes(ext)) target = 'pdf';
+
+        conversionParams = {
+          action: "file_conversion",
+          source_format: source,
+          target_format: target,
+          file_name: name
+        };
+        console.log(`[FILE CONVERSION] Fallback Params: ${source} -> ${target}`);
       }
 
       if (conversionParams && allAttachments.length > 0) {
@@ -488,27 +511,33 @@ Do not output any other text or explanation if you are triggering these actions.
       try {
         return await tryModel(primaryModelName || "gemini-1.5-flash-001");
       } catch (err1) {
-        console.warn("[GEMINI] Falling back to gemini-1.5-pro-latest...");
+        console.warn("[GEMINI] Falling back to gemini-1.5-flash...");
         try {
-          return await tryModel("gemini-1.5-pro-001");
+          return await tryModel("gemini-1.5-flash-002");
         } catch (err2) {
           throw new Error(`All models failed. Last error: ${err2.message}`);
         }
       }
     };
 
-    while (retryCount < maxRetries) {
-      try {
-        reply = await attemptGeneration();
-        break; // Success!
-      } catch (err) {
-        if (err.status === 429 && retryCount < maxRetries - 1) {
-          retryCount++;
-          const waitTime = Math.pow(2, retryCount) * 1000;
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          continue;
+    // --- SKIP GENERATION IF CONVERSION SUCCESSFUL ---
+    if (conversionResult && conversionResult.success) {
+      console.log("[CHAT] Conversion successful, skipping text generation.");
+      reply = conversionResult.message || "Here is your converted document.";
+    } else {
+      while (retryCount < maxRetries) {
+        try {
+          reply = await attemptGeneration();
+          break; // Success!
+        } catch (err) {
+          if (err.status === 429 && retryCount < maxRetries - 1) {
+            retryCount++;
+            const waitTime = Math.pow(2, retryCount) * 1000;
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            continue;
+          }
+          throw err;
         }
-        throw err;
       }
     }
 

@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Dual-mode initialization: Try Gemini API Key first, fallback to Vertex AI
 const apiKey = process.env.GEMINI_API_KEY;
 const projectId = process.env.GCP_PROJECT_ID;
-const location = 'asia-south1';
+const location = 'us-central1';
 const keyFilePath = path.join(__dirname, '../google_cloud_credentials.json');
 
 let genAI;
@@ -42,7 +42,7 @@ else if (projectId) {
 }
 
 // Model name - use standard Gemini 1.5 Flash
-export const modelName = "gemini-2.5-flash";
+export const modelName = "gemini-1.5-flash";
 
 const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under
 Unified Web Options & Services (UWO) for the AI Mall™ ecosystem.
@@ -95,7 +95,7 @@ export const generativeModel = useVertexAI
     safetySettings: [
       {
         category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
     ],
     generationConfig: { maxOutputTokens: 4096 },
@@ -106,7 +106,7 @@ export const generativeModel = useVertexAI
     safetySettings: [
       {
         category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
-        threshold: HarmBlockThreshold.BLOCK_MEDIUM_AND_ABOVE,
+        threshold: HarmBlockThreshold.BLOCK_ONLY_HIGH,
       },
     ],
     generationConfig: { maxOutputTokens: 4096 },

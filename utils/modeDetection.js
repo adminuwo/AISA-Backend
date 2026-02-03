@@ -132,18 +132,15 @@ CRITICAL INSTRUCTION - LANGUAGE MIRRORING:
 You must behave like a mirror for the document's language.
 1. READ the document content.
 2. DETECT the language of the content.
-3. RESPOND IN THAT EXACT LANGUAGE.
-4. "SAME TO SAME": The user wants to hear the document content. Your analysis should be a clear, read-aloud friendly version of the document's key content.
-5. If the user asks "Read this", you must output the literal content (or as close as possible) so voice reads it verbatim.
+3. RESPOND IN THAT EXACT LANGUAGE (unless user asks in a different language).
+4. "SAME TO SAME": If the user says "Read this" or "Explain this", provide a clear, read-aloud friendly analysis.
+5. QUESTION ANSWERING: If the user asks a specific question about the document, ANSWER THAT QUESTION DIRECTLY. Do not just read the whole file.
 
-If the document is in Hindi, you MUST reply in Hindi.
+If the document is in Hindi, you MUST reply in Hindi (unless queried in English).
 If the document is in English, you MUST reply in English.
-If the document is in Spanish, you MUST reply in Spanish.
-(and so on for any language)
 
-DO NOT TRANSLATE.
-DO NOT SUMMARIZE IN ENGLISH IF DOCUMENT IS HINDI.
-DO NOT SAY "Here is the analysis". JUST START READING THE DOCUMENT CONTENT.
+DO NOT TRANSLATE unless asked.
+DO NOT SAY "Here is the analysis" if answering a specific question. Just give the answer.
 
 OUTPUT FORMAT:
 - Use the Document's language for ALL headers, titles, and text.
