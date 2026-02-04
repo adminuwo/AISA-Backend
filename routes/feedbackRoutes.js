@@ -1,5 +1,6 @@
 import express from 'express';
 import Feedback from '../models/Feedback.js';
+import { sendFeedbackEmail } from '../utils/Email.js';
 
 const router = express.Router();
 
@@ -23,6 +24,11 @@ router.post('/', async (req, res) => {
         });
 
         await newFeedback.save();
+
+        // Send email notification to admin asynchronously
+        sendFeedbackEmail(newFeedback).catch(err =>
+            console.error('Error sending feedback email:', err)
+        );
 
         res.status(201).json({ message: 'Feedback submitted successfully', feedback: newFeedback });
     } catch (error) {
