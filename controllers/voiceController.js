@@ -67,16 +67,16 @@ export const synthesizeSpeech = async (req, res) => {
         // Preferred voices map structure: [Language][Gender]
         const voiceMap = {
             'hi-IN': {
-                'FEMALE': 'hi-IN-Neural2-D',
-                'MALE': 'hi-IN-Wavenet-B'
+                'FEMALE': 'hi-IN-Neural2-A',
+                'MALE': 'hi-IN-Neural2-B'
             },
             'en-US': {
-                'FEMALE': 'en-US-Neural2-F',
-                'MALE': 'en-US-Neural2-D'
+                'FEMALE': 'en-US-Journey-F',
+                'MALE': 'en-US-Journey-D'
             },
             'en-IN': {
-                'FEMALE': 'en-IN-Neural2-D',
-                'MALE': 'en-IN-Wavenet-B'
+                'FEMALE': 'en-IN-Neural2-A',
+                'MALE': 'en-IN-Neural2-B'
             }
         };
 
