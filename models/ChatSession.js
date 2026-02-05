@@ -31,6 +31,11 @@ const chatSessionSchema = new mongoose.Schema({
     ref: 'User',
     required: false
   },
+  guestId: {
+    type: String,
+    index: true,
+    required: false
+  },
   title: { type: String, default: 'New Chat' },
   messages: [messageSchema],
   lastModified: { type: Number, default: Date.now },

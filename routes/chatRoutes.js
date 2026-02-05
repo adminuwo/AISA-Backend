@@ -3,7 +3,9 @@ import express from "express"
 import ChatSession from "../models/ChatSession.js"
 import { generativeModel, genAIInstance, modelName as primaryModelName } from "../config/vertex.js";
 import userModel from "../models/User.js";
+import Guest from "../models/Guest.js";
 import { verifyToken, optionalVerifyToken } from "../middleware/authorization.js";
+import { identifyGuest } from "../middleware/guestMiddleware.js";
 import { uploadToCloudinary } from "../services/cloudinary.service.js";
 import mammoth from "mammoth";
 import { detectMode, getModeSystemInstruction } from "../utils/modeDetection.js";
@@ -19,11 +21,42 @@ import axios from "axios";
 
 
 const router = express.Router();
+
+// Helper to check guest limits
+const checkGuestLimits = async (req, sessionId) => {
+  if (req.user) return { allowed: true };
+  if (!req.guest) return { allowed: true }; // Should not happen with middleware
+
+  const MAX_SESSIONS = 10;
+  const MAX_MESSAGES = 5;
+
+  // 1. Check Sessions Count
+  if (req.guest.sessionIds.length >= MAX_SESSIONS && !req.guest.sessionIds.includes(sessionId)) {
+    return { allowed: false, reason: "MAX_SESSIONS_REACHED" };
+  }
+
+  // 2. Check Messages Count in current session if sessionId is provided
+  if (sessionId) {
+    const session = await ChatSession.findOne({ sessionId });
+    if (session && session.messages && session.messages.length >= MAX_MESSAGES) {
+      return { allowed: false, reason: "MAX_MESSAGES_REACHED" };
+    }
+  }
+
+  return { allowed: true };
+};
+
 // Get all chat sessions (summary)
-router.post("/", optionalVerifyToken, async (req, res) => {
-  const { content, history, systemInstruction, image, video, document, language, model, mode } = req.body;
+router.post("/", optionalVerifyToken, identifyGuest, async (req, res) => {
+  const { content, history, systemInstruction, image, video, document, language, model, mode, sessionId } = req.body;
 
   try {
+    // Enforce limits for guests
+    const limitCheck = await checkGuestLimits(req, sessionId);
+    if (!limitCheck.allowed) {
+      return res.status(403).json({ error: "LIMIT_REACHED", reason: limitCheck.reason });
+    }
+
     // --- MULTI-MODEL DISPATCHER ---
     if (model && !model.startsWith('gemini')) {
       try {
@@ -509,8 +542,8 @@ Do not output any other text or explanation if you are triggering these actions.
       };
 
       try {
-        // Enforce gemini-2.5-flash as requested
-        return await tryModel(primaryModelName || "gemini-2.5-flash");
+        // Use the model from vertex.js config
+        return await tryModel(primaryModelName);
       } catch (err) {
         throw new Error(`Model generation failed: ${err.message}`);
       }
@@ -749,10 +782,15 @@ Stack: ${err.stack}
     return res.status(statusCode).json({ error: "AI failed to respond", details: err.message });
   }
 });
-// Get all chat sessions (summary) for the authenticated user
-router.get('/', verifyToken, async (req, res) => {
+// Get all chat sessions (summary) for the authenticated user or guest
+router.get('/', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    const guestId = req.guest?.guestId;
+
+    if (!userId && !guestId) {
+      return res.json([]);
+    }
 
     // Check DB connection
     if (mongoose.connection.readyState !== 1) {
@@ -760,29 +798,22 @@ router.get('/', verifyToken, async (req, res) => {
       return res.json([]);
     }
 
-    const user = await userModel.findById(userId).populate({
-      path: 'chatSessions',
-      select: 'sessionId title lastModified userId',
-      options: { sort: { lastModified: -1 } }
-    });
+    let sessions = [];
 
-    if (!user) {
-      console.warn(`[CHAT SESSION] User ${userId} not found in DB. Returning empty sessions.`);
-      return res.json([]);
+    if (userId) {
+      const user = await userModel.findById(userId).populate({
+        path: 'chatSessions',
+        select: 'sessionId title lastModified userId',
+        options: { sort: { lastModified: -1 } }
+      });
+      sessions = (user?.chatSessions || []).filter(s => s !== null);
+    } else if (guestId) {
+      sessions = await ChatSession.find({ guestId })
+        .select('sessionId title lastModified guestId')
+        .sort({ lastModified: -1 });
     }
 
-    // Filter out nulls and potentially sessions that don't belong to this user if somehow leaked
-    const validSessions = (user.chatSessions || []).filter(s => s !== null);
-
-    // Minor optimization: If any session is missing userId, update it (Legacy fix)
-    const orphans = validSessions.filter(s => !s.userId);
-    if (orphans.length > 0) {
-      const orphanIds = orphans.map(s => s._id);
-      await ChatSession.updateMany({ _id: { $in: orphanIds } }, { $set: { userId } });
-      console.log(`[CHAT] Fixed ${orphans.length} orphaned sessions for user ${userId}`);
-    }
-
-    res.json(validSessions);
+    res.json(sessions);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to fetch sessions' });
@@ -790,10 +821,11 @@ router.get('/', verifyToken, async (req, res) => {
 });
 
 // Get chat history for a specific session
-router.get('/:sessionId', verifyToken, async (req, res) => {
+router.get('/:sessionId', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    const guestId = req.guest?.guestId;
 
     // Check DB connection
     if (mongoose.connection.readyState !== 1) {
@@ -801,7 +833,7 @@ router.get('/:sessionId', verifyToken, async (req, res) => {
       return res.json({ sessionId, messages: [] });
     }
 
-    // Verify that the session belongs to this user
+    // Verify that the session belongs to this user or guest
     let session = await ChatSession.findOne({ sessionId });
 
     if (!session) {
@@ -809,10 +841,41 @@ router.get('/:sessionId', verifyToken, async (req, res) => {
       return res.status(404).json({ message: 'Session not found' });
     }
 
-    // Assign userId if it's missing (legacy support)
-    if (!session.userId) {
-      session.userId = userId;
-      await session.save();
+    // Ownership check
+    if (userId) {
+      if (session.userId && session.userId.toString() !== userId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      // If session is unowned, try to link it to the logged-in user
+      if (!session.userId) {
+        const currentGuestId = req.cookies.guest_id;
+        const fingerprint = req.headers['x-device-fingerprint'];
+
+        let canLink = (session.guestId === currentGuestId);
+
+        if (!canLink && fingerprint) {
+          const guestByFingerprint = await Guest.findOne({ fingerprint });
+          if (guestByFingerprint && guestByFingerprint.guestId === session.guestId) {
+            canLink = true;
+          }
+        }
+
+        // Emergency fallback: If it's a guest session and user is accessing it right after login
+        // we can be slightly more lenient if needed, but fingerprint/cookie covers most cases.
+
+        if (canLink || !session.guestId) { // !session.guestId handles legacy/edge cases
+          session.userId = userId;
+          await session.save();
+          await userModel.findByIdAndUpdate(userId, { $addToSet: { chatSessions: session._id } });
+          console.log(`[CHAT] Linked guest session ${sessionId} to user ${userId}`);
+        }
+      }
+    } else if (guestId) {
+      if (session.guestId !== guestId) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+    } else {
+      return res.status(401).json({ error: "Unauthorized" });
     }
 
     console.log(`[CHAT] Found session ${sessionId} with ${session.messages?.length || 0} messages.`);
@@ -823,15 +886,21 @@ router.get('/:sessionId', verifyToken, async (req, res) => {
 });
 
 // Create or Update message in session
-router.post('/:sessionId/message', verifyToken, async (req, res) => {
+router.post('/:sessionId/message', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { message, title } = req.body;
-    const userId = req.user.id
-
+    const userId = req.user?.id;
+    const guest = req.guest;
 
     if (!message?.role || !message?.content) {
       return res.status(400).json({ error: 'Invalid message format' });
+    }
+
+    // Enforce limits for guests
+    const limitCheck = await checkGuestLimits(req, sessionId);
+    if (!limitCheck.allowed) {
+      return res.status(403).json({ error: "LIMIT_REACHED", reason: limitCheck.reason });
     }
 
     // Cloudinary Upload Logic for Multiple Attachments
@@ -868,32 +937,68 @@ router.post('/:sessionId/message', verifyToken, async (req, res) => {
       return res.json({ sessionId, messages: [message], dummy: true });
     }
 
+    // Ownership check before saving
+    let existingSession = await ChatSession.findOne({ sessionId });
+    if (existingSession) {
+      if (userId) {
+        if (existingSession.userId && existingSession.userId.toString() !== userId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+        if (!existingSession.userId && existingSession.guestId) {
+          const currentGuestId = req.cookies.guest_id;
+          const fingerprint = req.headers['x-device-fingerprint'];
+          let canLink = (existingSession.guestId === currentGuestId);
+          if (!canLink && fingerprint) {
+            const guestByFingerprint = await Guest.findOne({ fingerprint });
+            if (guestByFingerprint && guestByFingerprint.guestId === existingSession.guestId) {
+              canLink = true;
+            }
+          }
+          if (!canLink) return res.status(403).json({ error: "Access denied" });
+        }
+      } else if (guest) {
+        if (existingSession.guestId && existingSession.guestId !== guest.guestId) {
+          return res.status(403).json({ error: "Access denied" });
+        }
+      }
+    }
+
+    const updateData = {
+      $push: { messages: message },
+      $set: {
+        lastModified: Date.now(),
+        ...(title && { title })
+      }
+    };
+
+    if (userId) {
+      updateData.$set.userId = userId;
+    } else if (guest) {
+      updateData.$set.guestId = guest.guestId;
+    }
+
     const session = await ChatSession.findOneAndUpdate(
       { sessionId },
-      {
-        $push: { messages: message },
-        $set: {
-          lastModified: Date.now(),
-          userId: userId, // Ensure userId is always set/updated
-          ...(title && { title })
-        }
-      },
+      updateData,
       { new: true, upsert: true }
     );
 
-    console.log(`[CHAT] Saved message to session ${sessionId}. New message count: ${session.messages.length}`);
-
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      console.warn(`[CHAT] userId ${userId} is not a valid ObjectId. Skipping user association.`);
-      return res.json(session);
+    // Update guest's sessionIds tracker if guest session
+    if (guest && !guest.sessionIds.includes(sessionId)) {
+      guest.sessionIds.push(sessionId);
+      await guest.save();
     }
 
-    await userModel.findByIdAndUpdate(
-      userId,
-      { $addToSet: { chatSessions: session._id } },
-      { new: true }
-    );
-    console.log(`[CHAT] Associated session ${session._id} with user ${userId}.`);
+    // If logged in, associate with user profile
+    if (userId && mongoose.Types.ObjectId.isValid(userId)) {
+      await userModel.findByIdAndUpdate(
+        userId,
+        { $addToSet: { chatSessions: session._id } },
+        { new: true }
+      );
+      console.log(`[CHAT] Associated session ${session._id} with user ${userId}.`);
+    }
+
     res.json(session);
   } catch (err) {
     console.error(err);

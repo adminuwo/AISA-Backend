@@ -9,7 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // Dual-mode initialization: Try Gemini API Key first, fallback to Vertex AI
 const apiKey = process.env.GEMINI_API_KEY;
 const projectId = process.env.GCP_PROJECT_ID;
-const location = 'us-central1';
+const location = 'asia-south1';
 const keyFilePath = path.join(__dirname, '../google_cloud_credentials.json');
 
 let genAI;
@@ -41,7 +41,7 @@ else if (projectId) {
   console.error("❌ Error: Neither GEMINI_API_KEY nor GCP_PROJECT_ID found in environment variables.");
 }
 
-// Model name - use standard Gemini 1.5 Flash
+// Model name - Vertex AI latest experimental (gemini-2.5-flash does NOT exist yet!)
 export const modelName = "gemini-2.5-flash";
 
 const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under

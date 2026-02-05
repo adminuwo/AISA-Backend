@@ -27,7 +27,7 @@ export const createOrder = async (req, res) => {
                 amount = 0;
                 break;
             case 'pro':
-                amount = 299;
+                amount = 499;
                 break;
             case 'king':
                 amount = 1499;

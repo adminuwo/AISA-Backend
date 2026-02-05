@@ -60,7 +60,8 @@ app.use(cors({
   origin: true, // Allow any origin in development
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-device-fingerprint'],
+  exposedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(cookieParser())
 app.use(express.json({ limit: "50mb" }));
