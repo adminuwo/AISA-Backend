@@ -38,12 +38,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 8080;
 
-console.log("--- STARTUP DEBUG ---");
-console.log("PORT from env:", process.env.PORT);
-console.log("Effective PORT:", PORT);
-console.log("MONGO_URI from env:", process.env.MONGODB_URI);
-console.log("MONGODB_ATLAS_URI from env:", process.env.MONGODB_ATLAS_URI);
-console.log("---------------------");
+
 
 // Connect to Database
 connectDB().then(() => {

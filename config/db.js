@@ -7,7 +7,7 @@ import dns from 'dns';
 // Fix for querySrv ECONNREFUSED on some networks/Windows
 dns.setServers(['8.8.8.8', '8.8.4.4']);
 
-console.log("MONGO_URI", MONGO_URI);
+
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(MONGO_URI, {

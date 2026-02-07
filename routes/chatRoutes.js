@@ -223,26 +223,26 @@ Do not output any other text or explanation if you are triggering these actions.
     async function processDocumentPart(doc, partsArray) {
       const mimeType = doc.mimeType || 'application/pdf';
 
-      // For PDF and Word documents, we can pass binary data to Gemini 1.5
-      if (mimeType === 'application/pdf' || mimeType.includes('word') || mimeType.includes('officedocument.wordprocessingml')) {
+      // For PDF documents, we can pass binary data directly to Gemini
+      if (mimeType === 'application/pdf') {
         partsArray.push({
           inlineData: {
             data: doc.base64Data,
             mimeType: mimeType
           }
         });
+      }
 
-        // Also extract text as fallback/context for Word docs
-        if (mimeType.includes('word') || mimeType.includes('officedocument')) {
-          try {
-            const buffer = Buffer.from(doc.base64Data, 'base64');
-            const result = await mammoth.extractRawText({ buffer });
-            if (result.value) {
-              partsArray.push({ text: `[Fallback Text Content of ${doc.name || 'document'}]:\n${result.value}` });
-            }
-          } catch (e) {
-            console.warn("Text extraction fallback failed, using binary only", e.message);
+      // Extract text for all document types (Word, etc.)
+      if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.includes('text')) {
+        try {
+          const buffer = Buffer.from(doc.base64Data, 'base64');
+          const result = await mammoth.extractRawText({ buffer });
+          if (result.value) {
+            partsArray.push({ text: `[Fallback Text Content of ${doc.name || 'document'}]:\n${result.value}` });
           }
+        } catch (e) {
+          console.warn("Text extraction fallback failed, using binary only", e.message);
         }
       } else if (doc.mimeType && (doc.mimeType.includes('text') || doc.mimeType.includes('spreadsheet') || doc.mimeType.includes('presentation'))) {
         try {
