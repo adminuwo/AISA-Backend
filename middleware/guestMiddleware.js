@@ -5,7 +5,7 @@ export const identifyGuest = async (req, res, next) => {
     // If authenticated as user, guest logic is not needed for limits (but session might need it)
     if (req.user) return next();
 
-    let guestId = req.cookies.guest_id;
+    let guestId = req.cookies.aisa_guest_id;
     const fingerprint = req.headers['x-device-fingerprint'];
     const ip = req.ip || req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
@@ -17,11 +17,13 @@ export const identifyGuest = async (req, res, next) => {
             guest = await Guest.findOne({ guestId });
         }
 
-        // 2. Fallback to fingerprint
+        // 2. Fallback to fingerprint (DISABLED: Fingerprints are not unique enough and cause collisions)
+        /*
         if (!guest && fingerprint) {
             guest = await Guest.findOne({ fingerprint });
             if (guest) guestId = guest.guestId;
         }
+        */
 
         // 3. Fallback to IP (LESS STRICT for session sharing prevention, prefer cookie/fingerprint)
         // If we only have IP, we should be careful. 
@@ -41,11 +43,12 @@ export const identifyGuest = async (req, res, next) => {
             guestId = `guest_${uuidv4()}`;
             guest = new Guest({
                 guestId: guestId,
-                fingerprint: fingerprint || `fp_${uuidv4()}`, // Generate fingerprint if missing
+                fingerprint: fingerprint ? `${fingerprint}_${uuidv4()}` : `fp_${uuidv4()}`, // Ensure uniqueness
                 ip: ip,
                 sessionIds: []
             });
             await guest.save();
+            console.log('[GUEST] Generated new unique guest identity:', guestId);
         } else {
             // Update fingerprint/IP if found
             let updated = false;
@@ -63,7 +66,7 @@ export const identifyGuest = async (req, res, next) => {
         }
 
         // Set HttpOnly cookie
-        res.cookie('guest_id', guestId, {
+        res.cookie('aisa_guest_id', guestId, {
             httpOnly: true,
             secure: true, // Always secure for HttpOnly cookies in modern browsers
             sameSite: 'none', // Needed for cross-origin if frontend/backend are on different domains

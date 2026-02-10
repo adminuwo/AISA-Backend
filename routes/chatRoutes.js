@@ -852,7 +852,7 @@ router.get('/:sessionId', optionalVerifyToken, identifyGuest, async (req, res) =
       }
       // If session is unowned, try to link it to the logged-in user
       if (!session.userId) {
-        const currentGuestId = req.cookies.guest_id;
+        const currentGuestId = req.cookies.aisa_guest_id;
         const fingerprint = req.headers['x-device-fingerprint'];
 
         let canLink = (session.guestId === currentGuestId);
@@ -949,7 +949,7 @@ router.post('/:sessionId/message', optionalVerifyToken, identifyGuest, async (re
           return res.status(403).json({ error: "Access denied" });
         }
         if (!existingSession.userId && existingSession.guestId) {
-          const currentGuestId = req.cookies.guest_id;
+          const currentGuestId = req.cookies.aisa_guest_id;
           const fingerprint = req.headers['x-device-fingerprint'];
           let canLink = (existingSession.guestId === currentGuestId);
           if (!canLink && fingerprint) {
@@ -1012,15 +1012,25 @@ router.post('/:sessionId/message', optionalVerifyToken, identifyGuest, async (re
 
 
 // Delete individual message from session
-router.delete('/:sessionId/message/:messageId', verifyToken, async (req, res) => {
+router.delete('/:sessionId/message/:messageId', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
     const { sessionId, messageId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    const guestId = req.guest?.guestId;
 
     // Optional: Also delete the subsequent model response if it exists
     // (Logic moved from frontend to backend for consistency)
     const session = await ChatSession.findOne({ sessionId });
     if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // Ownership check
+    if (userId) {
+      if (session.userId && session.userId.toString() !== userId) return res.status(403).json({ error: 'Access denied' });
+    } else if (guestId) {
+      if (session.guestId !== guestId) return res.status(403).json({ error: 'Access denied' });
+    } else {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
 
     const msgIndex = session.messages.findIndex(m => m.id === messageId);
     if (msgIndex === -1) return res.status(404).json({ error: 'Message not found' });
@@ -1058,11 +1068,12 @@ router.delete('/:sessionId/message/:messageId', verifyToken, async (req, res) =>
 // (The POST /:sessionId/message route is defined above around line 702)
 
 // Update chat session title
-router.patch('/:sessionId/title', verifyToken, async (req, res) => {
+router.patch('/:sessionId/title', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
     const { sessionId } = req.params;
     const { title } = req.body;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    const guestId = req.guest?.guestId;
 
     if (!title) return res.status(400).json({ error: 'Title is required' });
 
@@ -1071,15 +1082,22 @@ router.patch('/:sessionId/title', verifyToken, async (req, res) => {
       return res.status(503).json({ error: 'Database unavailable' });
     }
 
-    // Update session: search by sessionId AND (either matching userId or no userId yet)
-    const session = await ChatSession.findOneAndUpdate(
-      {
-        sessionId,
-        $or: [{ userId: userId }, { userId: { $exists: false } }]
-      },
-      { $set: { title, lastModified: Date.now(), userId: userId } },
-      { new: true }
-    );
+    const session = await ChatSession.findOne({ sessionId });
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // Ownership check
+    if (userId) {
+      if (session.userId && session.userId.toString() !== userId) return res.status(403).json({ error: 'Access denied' });
+    } else if (guestId) {
+      if (session.guestId !== guestId) return res.status(403).json({ error: 'Access denied' });
+    } else {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    session.title = title;
+    session.lastModified = Date.now();
+    if (userId && !session.userId) session.userId = userId; // Claim ownership if unclaimed
+    await session.save();
 
     if (!session) {
       console.warn(`[CHAT] Rename failed: Session ${sessionId} not found or not owned by ${userId}`);
@@ -1094,17 +1112,34 @@ router.patch('/:sessionId/title', verifyToken, async (req, res) => {
   }
 });
 
-router.delete('/:sessionId', verifyToken, async (req, res) => {
+router.delete('/:sessionId', optionalVerifyToken, identifyGuest, async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const userId = req.user.id;
+    const userId = req.user?.id;
+    const guestId = req.guest?.guestId;
 
     if (mongoose.connection.readyState !== 1) {
       return res.json({ message: 'History cleared (Mock)' });
     }
 
-    const session = await ChatSession.findOneAndDelete({ sessionId });
-    if (session) {
+    const session = await ChatSession.findOne({ sessionId });
+    if (!session) return res.status(404).json({ error: 'Session not found' });
+
+    // Ownership check
+    if (userId) {
+      if (session.userId && session.userId.toString() !== userId) {
+        // Allow if linking logic applies? No, strict deletion.
+        return res.status(403).json({ error: 'Access denied' });
+      }
+    } else if (guestId) {
+      if (session.guestId !== guestId) return res.status(403).json({ error: 'Access denied' });
+    } else {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    await ChatSession.deleteOne({ sessionId });
+
+    if (userId) {
       await userModel.findByIdAndUpdate(userId, { $pull: { chatSessions: session._id } });
     }
     res.json({ message: 'History cleared' });
