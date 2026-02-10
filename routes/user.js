@@ -17,7 +17,7 @@ route.get("/", verifyToken, async (req, res) => {
             return res.status(200).json({
                 _id: userId,
                 name: req.user.name || "Demo User",
-                email: req.user.email || "demo@ai-mall.in",
+                email: req.user.email || "demo@aisa.in",
                 role: "user",
                 personalizations: {}
             });
@@ -29,7 +29,7 @@ route.get("/", verifyToken, async (req, res) => {
             return res.status(200).json({
                 _id: userId,
                 name: req.user.name || "AISA User",
-                email: req.user.email || "user@ai-mall.in",
+                email: req.user.email || "user@aisa.in",
                 role: "user",
                 personalizations: {}
             });
@@ -105,7 +105,7 @@ route.put("/profile", verifyToken, async (req, res) => {
             return res.status(200).json({
                 _id: userId,
                 name: name,
-                email: req.user.email || "demo@ai-mall.in",
+                email: req.user.email || "demo@aisa.in",
                 role: "user"
             });
         }

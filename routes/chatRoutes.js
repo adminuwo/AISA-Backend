@@ -808,9 +808,13 @@ router.get('/', optionalVerifyToken, identifyGuest, async (req, res) => {
       });
       sessions = (user?.chatSessions || []).filter(s => s !== null);
     } else if (guestId) {
-      sessions = await ChatSession.find({ guestId })
+      // STRICTLY filter by guestId for non-logged-in users
+      sessions = await ChatSession.find({ guestId: guestId })
         .select('sessionId title lastModified guestId')
         .sort({ lastModified: -1 });
+    } else {
+      // No user, no guest ID -> No sessions should be returned
+      return res.json([]);
     }
 
     res.json(sessions);

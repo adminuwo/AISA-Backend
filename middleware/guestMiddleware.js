@@ -23,29 +23,38 @@ export const identifyGuest = async (req, res, next) => {
             if (guest) guestId = guest.guestId;
         }
 
-        // 3. Fallback to IP
+        // 3. Fallback to IP (LESS STRICT for session sharing prevention, prefer cookie/fingerprint)
+        // If we only have IP, we should be careful. 
+        // BETTER: If no cookie/fingerprint, treat as NEW user, do not link by IP alone to avoid "shared office" issues.
+        // We will only use IP for rate limiting, not identity.
+
+        /* 
         if (!guest && ip) {
             guest = await Guest.findOne({ ip });
             if (guest) guestId = guest.guestId;
-        }
+        } 
+        */
 
         // 4. Create new guest if none found
         if (!guest) {
+            // New Guest ID
             guestId = `guest_${uuidv4()}`;
             guest = new Guest({
-                guestId,
-                fingerprint,
-                ip,
+                guestId: guestId,
+                fingerprint: fingerprint || `fp_${uuidv4()}`, // Generate fingerprint if missing
+                ip: ip,
                 sessionIds: []
             });
             await guest.save();
         } else {
-            // Update fingerprint/IP if changed
+            // Update fingerprint/IP if found
             let updated = false;
-            if (fingerprint && guest.fingerprint !== fingerprint) {
+            // Only update fingerprint if it was missing before, don't overwrite
+            if (fingerprint && !guest.fingerprint) {
                 guest.fingerprint = fingerprint;
                 updated = true;
             }
+            // Always update last known IP
             if (ip && guest.ip !== ip) {
                 guest.ip = ip;
                 updated = true;

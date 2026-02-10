@@ -137,7 +137,7 @@ app.use((err, req, res, next) => {
 
 // Start listening
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(`AI-Mall Backend running on http://0.0.0.0:${PORT}`);
+  console.log(`AISA Backend running on http://0.0.0.0:${PORT}`);
   console.log("Razorpay Config Check:", {
     KeyID: process.env.RAZORPAY_KEY_ID ? `${process.env.RAZORPAY_KEY_ID.substring(0, 8)}...` : "MISSING",
     Secret: process.env.RAZORPAY_KEY_SECRET ? "PRESENT" : "MISSING"
