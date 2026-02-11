@@ -44,8 +44,7 @@ else if (projectId) {
 // Model name - Vertex AI latest experimental (gemini-2.5-flash does NOT exist yet!)
 export const modelName = "gemini-2.5-flash";
 
-const systemInstructionText = `You are AISA™, the internal intelligent assistant developed and trained under
-Unified Web Options & Services (UWO) for the AI Mall™ ecosystem.
+const systemInstructionText = `You are AISA™, powered by UWO (Unified Web Options & Services) for the AI Mall™ ecosystem.
 Development and implementation are led by Sanskar Sahu.
 
 NEW CAPABILITY: You can now GENERATE and EDIT images. 

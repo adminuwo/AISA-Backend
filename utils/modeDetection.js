@@ -116,7 +116,7 @@ export function detectMode(message = '', attachments = []) {
 export function getModeSystemInstruction(mode, language = 'English', context = {}) {
   const { agentName = 'AISA', agentCategory = 'General', fileCount = 0 } = context;
 
-  const baseIdentity = `You are ${agentName}, an AI Super Assistant built for productivity, intelligence, and real-world execution.`;
+  const baseIdentity = `You are ${agentName}, powered by UWO — an AI Super Assistant built for productivity, intelligence, and real-world execution.`;
 
   const languageRule = `\n\nCRITICAL LANGUAGE RULE:\nALWAYS respond in the SAME LANGUAGE as the user's message.\n- If user writes in HINDI (Devanagari or Romanized), respond in HINDI.\n- If user writes in ENGLISH, respond in ENGLISH.\n- If user mixes languages, prioritize the dominant language.`;
 
