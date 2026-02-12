@@ -31,6 +31,7 @@ import imageRoutes from './routes/image.routes.js';
 import videoRoutes from './routes/videoRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import memoryRoutes from './routes/memoryRoutes.js';
 
 // End of standard imports
 
@@ -100,6 +101,7 @@ app.use('/api/reminders', reminderRoutes);
 app.use('/api/feedback', feedbackRoutes);
 app.use('/api/support', supportRoutes);
 app.use('/api/personal-assistant', personalTaskRoutes);
+app.use('/api/memory', memoryRoutes);
 
 // Business & Dashboard
 app.use('/api/payment', paymentRoutes);

@@ -16,6 +16,7 @@ import { performWebSearch } from "../services/searchService.js";
 import { convertFile } from "../utils/fileConversion.js";
 import { generateVideoFromPrompt } from "../controllers/videoController.js";
 import { generateImageFromPrompt } from "../controllers/image.controller.js";
+import { getMemoryContext, extractUserMemory, updateMemory } from "../utils/memoryService.js";
 
 import axios from "axios";
 
@@ -114,7 +115,15 @@ UWO - Company Profile Deck
       try {
         let reply = "";
 
-        const combinedSystemInstruction = `${systemInstructionText}\n\n${systemInstruction || ""}`;
+        let memoryContext = "";
+        let nameUsageInstruction = "";
+        if (req.user) {
+          memoryContext = await getMemoryContext(req.user.id);
+          if (req.user.name) {
+            nameUsageInstruction = `[NAME USAGE]: User is ${req.user.name}. Occasionally and naturally include their name in the response (20-30% of messages).`;
+          }
+        }
+        const combinedSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n\n${systemInstruction || ""}`;
 
         // Standard OpenAI Format Preparation
         const formattedMessages = [
@@ -166,6 +175,10 @@ UWO - Company Profile Deck
         }
 
 
+        if (req.user) {
+          extractUserMemory(content, history).then(mem => updateMemory(req.user.id, mem, model));
+        }
+
         return res.status(200).json({ reply });
 
       } catch (apiError) {
@@ -195,10 +208,27 @@ UWO - Company Profile Deck
     // Construct parts from history + current message
     let parts = [];
 
+    // --- PERSONAL MEMORY CONTEXT (OPTIONAL/AUTHENTICATED) ---
+    let memoryContext = "";
+    let nameUsageInstruction = "";
+    if (req.user) {
+      memoryContext = await getMemoryContext(req.user.id);
+      if (req.user.name) {
+        nameUsageInstruction = `
+[NAME USAGE RULE]:
+User's Name: ${req.user.name}
+Occassionally (roughly 20-30% of the time), naturally include the user's name in your response to make it feel more personal and ChatGPT-like. 
+- Use it for: Encouragement, acknowledging a good point, or starting a detailed suggestion.
+- Example: "Great point, ${req.user.name}!", "${req.user.name}, here is what you can do..."
+- DO NOT: Use it in every message, repeat it in every paragraph, or use it in consecutive responses.
+`;
+      }
+    }
+
     // Use mode-specific system instruction, or fallback to provided systemInstruction
     // CRITICAL: Merge with official branding from vertex.js to prevent hallucination
     let baseInstruction = systemInstruction || modeSystemInstruction;
-    let finalSystemInstruction = `${systemInstructionText}\n\n[SESSION CONTEXT]:\n${baseInstruction}`;
+    let finalSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n\n[SESSION CONTEXT]:\n${baseInstruction}`;
 
     if (detectedMode === 'FILE_CONVERSION' || detectedMode === 'FILE_ANALYSIS') {
       finalSystemInstruction = modeSystemInstruction;
@@ -804,6 +834,10 @@ Do not output any other text or explanation if you are triggering these actions.
       } else {
         finalResponse.reply = `Conversion failed: ${conversionResult.error}`;
       }
+    }
+
+    if (req.user) {
+      extractUserMemory(content, history).then(mem => updateMemory(req.user.id, mem, detectedMode));
     }
 
     return res.status(200).json(finalResponse);
