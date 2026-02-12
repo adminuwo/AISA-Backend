@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import express from "express"
 import ChatSession from "../models/ChatSession.js"
-import { generativeModel, genAIInstance, modelName as primaryModelName } from "../config/vertex.js";
+import { generativeModel, genAIInstance, modelName as primaryModelName, systemInstructionText } from "../config/vertex.js";
 import userModel from "../models/User.js";
 import Guest from "../models/Guest.js";
 import { verifyToken, optionalVerifyToken } from "../middleware/authorization.js";
@@ -57,135 +57,49 @@ router.post("/", optionalVerifyToken, identifyGuest, async (req, res) => {
       return res.status(403).json({ error: "LIMIT_REACHED", reason: limitCheck.reason });
     }
 
-    // Check if user is asking about AISA (who are you, apne bare me batao, etc.)
-    const aboutAISAPatterns = [
-      /apne?\s+bare?\s+me/i,
-      /apne?\s+baare?\s+me/i, // Handling double 'aa' as well
-      /tum\s+kaun\s+ho/i,
-      /aap\s+kaun\s+ho/i,
-      /who\s+are\s+you/i,
-      /tell\s+me\s+about\s+yourself/i,
-      /introduce\s+yourself/i,
-      /what\s+are\s+you/i,
-      /tum\s+kya\s+ho/i,
-      /aap\s+kya\s+ho/i
-    ];
+    // --- UWO & AISA BRANDING CHECKS (HIGH PRIORITY) ---
+    const lowerContent = content?.toLowerCase() || '';
 
-    const isAboutAISA = aboutAISAPatterns.some(pattern => pattern.test(content?.toLowerCase() || ''));
-    console.log(`[AISA CHECK] Question: "${content}", Matched AISA: ${isAboutAISA}`);
-
-    if (isAboutAISA && !image && !video && !document) {
-      // Detect language from the question
-      const isHindi = /apne?|tum|aap|kaun|kya|bare|me|batao|ho/i.test(content);
-
-      let predefinedResponse;
-
-      if (isHindi) {
-        predefinedResponse = `Main **AISA** hoon — ek Artificial Intelligence Super Assistant jo **UWO** ne banaya hai.
-
-**Mera kaam hai:**
-
-💻 Coding me help karna (React, Vite, Razorpay, GCP, etc.)
-
-✍️ Content likhna (stories, emails, reports, prompts)
-
-🎨 UI/UX ideas dena
-
-🧠 AI agent prompts banana
-
-🛠️ Technical problems solve karna
-
-Main 24/7 available hoon, thakta nahi hoon, aur jitni detail doge utni accurate help kar sakta hoon.
-
-Main insaan nahi hoon, mere paas emotions ya personal life nahi hai — lekin main tumhari style samajh ke personalized jawab dene ki koshish karta hoon.`;
-      } else {
-        predefinedResponse = `I'm **AISA** — an Artificial Intelligence Super Assistant created by **UWO**.
-
-**My job is to:**
-
-💻 Help with coding (React, Vite, Razorpay, GCP, etc.)
-
-✍️ Write content (stories, emails, reports, prompts)
-
-🎨 Provide UI/UX ideas
-
-🧠 Create AI agent prompts
-
-🛠️ Solve technical problems
-
-I'm available 24/7, never get tired, and the more details you provide, the more accurate help I can offer.
-
-I'm not human, I don't have emotions or a personal life — but I try to understand your style and give personalized responses.`;
-      }
-
-      return res.status(200).json({
-        reply: predefinedResponse,
-        detectedMode: 'NORMAL_CHAT',
-        language: isHindi ? 'Hindi' : 'English'
-      });
-    }
-
-    // Check if user is asking about UWO (what is UWO, UWO kya hai, etc.)
+    // Check for UWO
     const aboutUWOPatterns = [
-      // Acronym patterns
-      /what\s+is\s+(the\s+)?uwo/i,
-      /what'?s\s+(the\s+)?uwo/i,
-      /tell\s+me\s+about\s+(the\s+)?uwo/i,
-      /about\s+(the\s+)?uwo/i,
-      /explain\s+(the\s+)?uwo/i,
-      /^uwo$/i,  // Just "UWO" alone
-
-      // Full name patterns (various combinations)
-      /unified\s+web\s+options?/i,
-      /web\s+unified\s+options?/i,
-      /unified\s+web\s+services?/i,
-      /web\s+unified\s+services?/i,
-
-      // Hindi patterns
+      /\b(uwo|unified\s+web\s+options|ai\s+mall)\b/i,
+      /what\s+is\s+uwo/i,
+      /uwo\?/i,
       /uwo\s+kya\s+hai/i,
       /uwo\s+ke\s+bare\s+me/i,
-      /uwo\s+batao/i,
-      /uwo\s+kya\s+he/i
+      /uwo\s+batao/i
     ];
 
-    const isAboutUWO = aboutUWOPatterns.some(pattern => pattern.test(content?.toLowerCase() || ''));
+    // Check for AISA
+    const aboutAISAPatterns = [
+      /apne?\s+baare?\s+me/i,
+      /(who|what)\s+are\s+you/i,
+      /aap\s+kaun\s+ho/i,
+      /tum\s+kaun\s+ho/i
+    ];
 
-    console.log(`[UWO CHECK] Question: "${content}", Matched: ${isAboutUWO}`);
+    const isAboutUWO = aboutUWOPatterns.some(pattern => pattern.test(lowerContent));
+    const isAboutAISA = aboutAISAPatterns.some(pattern => pattern.test(lowerContent));
 
-    if (isAboutUWO && !image && !video && !document) {
-      // Detect language from the question
-      const isHindi = /kya|hai|he|batao|bare|me/i.test(content);
+    if ((isAboutUWO || isAboutAISA) && !image && !video && !document) {
+      const isHindi = /kya|hai|he|batao|bare|me|kaun|aap|tum|apne/i.test(lowerContent);
+      let predefinedResponse = '';
 
-      let predefinedResponse;
+      if (isAboutUWO) {
+        predefinedResponse = `Unified Web Options & Services Pvt. Ltd. (UWO™) is an IT-registered technology company founded in 2020 and headquartered in Jabalpur, Madhya Pradesh
 
-      if (isHindi) {
-        predefinedResponse = `**UWO** ka matlab hai **Unified Web Options & Services** 🌐
+UWO - Company Profile Deck
 
-Yeh ek technology company hai jo AI-powered solutions aur digital services provide karti hai. UWO ne **AISA** (mujhe!) aur **AI Mall™** ecosystem ko develop kiya hai.
-
-**UWO ke baare mein:**
-- **Full Name**: Unified Web Options & Services
-- **Focus**: AI-powered intelligent systems aur web services
-- **Main Product**: AI Mall™ ecosystem
-- **Leadership**: Development aur implementation **Sanskar Sahu** ke leadership mein hota hai
-
-UWO ka mission hai advanced AI technology ko accessible aur useful banana har kisi ke liye! 🚀
-
-Kya aap UWO ke kisi specific service ke baare mein jaanna chahte hain?`;
+. UWO specializes in AI solutions, business automation, CRM/workflow systems, AI agents & chatbots, web & app development, cloud integrations, and enterprise productivity tools. Its mission is to make AI simple, practical, and human-aligned, and its flagship project AI Mall™ is a global AI marketplace and automation ecosystem.`;
       } else {
-        predefinedResponse = `**UWO** stands for **Unified Web Options & Services** 🌐
-
-It's a technology company that provides AI-powered solutions and digital services. UWO has developed **AISA** (that's me!) and the **AI Mall™** ecosystem.
-
-**About UWO:**
-- **Full Name**: Unified Web Options & Services
-- **Focus**: AI-powered intelligent systems and web services
-- **Main Product**: AI Mall™ ecosystem
-- **Leadership**: Development and implementation are led by **Sanskar Sahu**
-
-UWO's mission is to make advanced AI technology accessible and useful for everyone! 🚀
-
-Would you like to know about any specific UWO service?`;
+        // About AISA
+        if (isHindi) {
+          predefinedResponse = `Main **AISA** hoon — ek Artificial Intelligence Super Assistant jo **UWO** ne banaya hai.
+💻 Coding, ✍️ Content writing, aur 🛠️ Technical problems solve karne me main apki help kar sakta hoon.`;
+        } else {
+          predefinedResponse = `I'm **AISA** — an Artificial Intelligence Super Assistant created by **UWO**.
+💻 I can help you with coding, ✍️ content writing, and 🛠️ solving technical problems.`;
+        }
       }
 
       return res.status(200).json({
@@ -194,16 +108,17 @@ Would you like to know about any specific UWO service?`;
         language: isHindi ? 'Hindi' : 'English'
       });
     }
-
 
     // --- MULTI-MODEL DISPATCHER ---
     if (model && !model.startsWith('gemini')) {
       try {
         let reply = "";
 
+        const combinedSystemInstruction = `${systemInstructionText}\n\n${systemInstruction || ""}`;
+
         // Standard OpenAI Format Preparation
         const formattedMessages = [
-          { role: 'system', content: systemInstruction || "You are a helpful assistant." },
+          { role: 'system', content: combinedSystemInstruction },
           ...(history || []).map(msg => ({
             role: msg.role === 'model' ? 'assistant' : 'user',
             content: msg.content
@@ -281,8 +196,10 @@ Would you like to know about any specific UWO service?`;
     let parts = [];
 
     // Use mode-specific system instruction, or fallback to provided systemInstruction
-    // CRITICAL: FILE_CONVERSION instructions must take priority over frontend generic prompts
-    let finalSystemInstruction = systemInstruction || modeSystemInstruction;
+    // CRITICAL: Merge with official branding from vertex.js to prevent hallucination
+    let baseInstruction = systemInstruction || modeSystemInstruction;
+    let finalSystemInstruction = `${systemInstructionText}\n\n[SESSION CONTEXT]:\n${baseInstruction}`;
+
     if (detectedMode === 'FILE_CONVERSION' || detectedMode === 'FILE_ANALYSIS') {
       finalSystemInstruction = modeSystemInstruction;
     } else {
