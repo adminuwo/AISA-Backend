@@ -107,13 +107,15 @@ export const verifyPayment = async (req, res) => {
         const isAuthentic = expectedSignature === razorpay_signature;
 
         if (isAuthentic) {
-            const capitalizedPlan = plan.charAt(0).toUpperCase() + plan.slice(1);
+            const capitalizedPlan = plan.trim().charAt(0).toUpperCase() + plan.trim().slice(1).toLowerCase();
+            const enumCorrectPlan = capitalizedPlan === 'King' ? 'King' : capitalizedPlan === 'Pro' ? 'Pro' : 'Basic';
 
             // Update User Plan
             const updatedUser = await User.findByIdAndUpdate(
                 userId,
                 {
-                    plan: capitalizedPlan,
+                    plan: enumCorrectPlan,
+                    'personalizations.account.subscriptionPlan': enumCorrectPlan,
                     subscription: {
                         status: 'active',
                         currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
@@ -135,13 +137,13 @@ export const verifyPayment = async (req, res) => {
                 buyerId: userId,
                 transactionId: razorpay_payment_id,
                 amount: amount / 100,
-                plan: capitalizedPlan,
+                plan: enumCorrectPlan,
                 paymentId: razorpay_payment_id,
                 orderId: razorpay_order_id,
                 status: 'Success'
             });
 
-            console.log('[VERIFY PAYMENT] Success - User updated:', updatedUser.email);
+            console.log(`[VERIFY PAYMENT] Success - Plan upgraded to ${enumCorrectPlan} for user ${updatedUser.email}`);
 
             res.status(200).json({
                 message: "Payment verified successfully",

@@ -104,6 +104,7 @@ router.post("/signup", async (req, res) => {
       email: newUser.email,
       message: "Verification code sent successfully",
       token: token,
+      plan: newUser.plan,
     });
   } catch (err) {
     console.error("Signup Error:", err);
@@ -197,6 +198,7 @@ router.post("/login", async (req, res) => {
       message: "LogIn Successfully",
       token: token,
       role: user.role,
+      plan: user.plan,
       notifications: user.notificationsInbox
     });
 

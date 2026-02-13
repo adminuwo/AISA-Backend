@@ -120,7 +120,7 @@ UWO - Company Profile Deck
         if (req.user) {
           memoryContext = await getMemoryContext(req.user.id);
           if (req.user.name) {
-            nameUsageInstruction = `[NAME USAGE]: User is ${req.user.name}. Occasionally and naturally include their name in the response (20-30% of messages). DO NOT start responses with "Hello" or "Hi" when answering questions.`;
+            nameUsageInstruction = `[NAME USAGE]: User is ${req.user.name}. Occasionally and naturally include their name in the response (20-30% of messages).`;
           }
         }
         const combinedSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n\n${systemInstruction || ""}`;
@@ -220,8 +220,7 @@ User's Name: ${req.user.name}
 Occassionally (roughly 20-30% of the time), naturally include the user's name in your response to make it feel more personal and ChatGPT-like. 
 - Use it for: Encouragement, acknowledging a good point, or starting a detailed suggestion.
 - Example: "Great point, ${req.user.name}!", "${req.user.name}, here is what you can do..."
-- DO NOT: Use it in every message, repeat it in every paragraph, or use it in consecutive responses. 
-- IMPORTANT: When using the name, do NOT start the message with "Hello [Name]" or "Hi [Name]". Instead, integrate it naturally into the sentence.
+- DO NOT: Use it in every message, repeat it in every paragraph, or use it in consecutive responses.
 `;
       }
     }

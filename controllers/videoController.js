@@ -22,8 +22,11 @@ export const generateVideo = async (req, res) => {
     // You can replace this with your preferred video generation service
     const videoUrl = await generateVideoFromPrompt(prompt, duration, quality);
 
+    // If generateVideoFromPrompt returns null, it failed internally.
+    // We can proceed to fallback logic below if videoUrl is null.
     if (!videoUrl) {
-      throw new Error('Failed to generate video');
+      logger.warn("[VIDEO] Primary generation failed, switching to fallback...");
+      throw new Error('Primary video generation failed');
     }
 
     logger.info(`[VIDEO] Video generated successfully: ${videoUrl}`);
@@ -38,6 +41,23 @@ export const generateVideo = async (req, res) => {
 
   } catch (error) {
     logger.error(`[VIDEO ERROR] ${error.message}`);
+
+    // Fallback to Pollinations (Image)
+    try {
+      logger.info("[VIDEO] Falling back to Pollinations Image Generation...");
+      const imageUrl = await generateVideoWithPollinations(prompt);
+
+      if (imageUrl) {
+        return res.status(200).json({
+          success: true,
+          imageUrl: imageUrl,
+          message: "Video generation service busy. Generated a preview image instead."
+        });
+      }
+    } catch (fallbackError) {
+      logger.error(`[FALLBACK ERROR] ${fallbackError.message}`);
+    }
+
     return res.status(500).json({
       success: false,
       message: error.message || 'Failed to generate video'
@@ -65,58 +85,86 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
     const location = 'us-central1'; // Veo is available in us-central1
     const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
 
-    const response = await axios.post(
-      endpoint,
-      {
-        instances: [{ prompt: prompt }],
-        parameters: {
-          video_length_seconds: duration || 5, // Veo param might use underscores
-          sampleCount: 1,
-          aspectRatio: "16:9"
+    // Retry Logic with Exponential Backoff
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError = null;
+
+    while (attempt < maxRetries) {
+      try {
+        if (attempt > 0) {
+          const delay = Math.pow(2, attempt) * 1000;
+          logger.info(`[VIDEO] Retrying attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
         }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
+
+        const response = await axios.post(
+          endpoint,
+          {
+            instances: [{ prompt: prompt }],
+            parameters: {
+              video_length_seconds: duration || 5, // Veo param might use underscores
+              sampleCount: 1,
+              aspectRatio: "16:9"
+            }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        if (response.data && response.data.predictions && response.data.predictions[0]) {
+          const prediction = response.data.predictions[0];
+
+          // Veo often returns a 'video' object containing 'bytesBase64Encoded' OR 'gcsUri'
+          // We check for base64 first
+          let base64Data = prediction.bytesBase64Encoded || prediction.video?.bytesBase64Encoded;
+
+          // As valid fallback for older models or variations
+          if (!base64Data && typeof prediction === 'string') {
+            base64Data = prediction;
+          }
+
+          if (base64Data) {
+            const buffer = Buffer.from(base64Data, 'base64');
+            // Upload to Cloudinary
+            const uploadResult = await uploadToCloudinary(buffer, {
+              resource_type: 'video',
+              folder: 'aisa_generated_videos'
+            });
+            logger.info(`[VERTEX VEO] Uploaded to Cloudinary: ${uploadResult.secure_url}`);
+            return uploadResult.secure_url;
+          } else {
+            logger.warn("[VERTEX VEO] No base64 data found. Full prediction keys:", Object.keys(prediction));
+            // If we got a successful response structure but no data, likely a model specific output format issue, don't retry same call
+            throw new Error('Vertex AI Veo returned valid response structure but invalid payload format.');
+          }
         }
-      }
-    );
 
-    if (response.data && response.data.predictions && response.data.predictions[0]) {
-      const prediction = response.data.predictions[0];
+        throw new Error('Vertex AI Veo did not return a valid video payload.');
 
-      // Veo often returns a 'video' object containing 'bytesBase64Encoded' OR 'gcsUri'
-      // We check for base64 first
-      let base64Data = prediction.bytesBase64Encoded || prediction.video?.bytesBase64Encoded;
-
-      // As valid fallback for older models or variations
-      if (!base64Data && typeof prediction === 'string') {
-        base64Data = prediction;
-      }
-
-      // If we only get a GCS URI (Cloud Storage), we can't upload to Cloudinary directly from here easily without downloading
-      // BUT, checking logs, Veo usually supports base64 for short clips.
-
-      if (base64Data) {
-        const buffer = Buffer.from(base64Data, 'base64');
-        // Upload to Cloudinary
-        const uploadResult = await uploadToCloudinary(buffer, {
-          resource_type: 'video',
-          folder: 'aisa_generated_videos'
-        });
-        logger.info(`[VERTEX VEO] Uploaded to Cloudinary: ${uploadResult.secure_url}`);
-        return uploadResult.secure_url;
-      } else {
-        logger.warn("[VERTEX VEO] No base64 data found. Full prediction keys:", Object.keys(prediction));
+      } catch (err) {
+        lastError = err;
+        // Only retry on 429 or 5xx errors
+        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
+          logger.warn(`[VIDEO RETRY] Attempt ${attempt + 1} failed: ${err.message}`);
+          attempt++;
+        } else {
+          // If it's a 400 or other client error, don't retry
+          throw err;
+        }
       }
     }
 
-    throw new Error('Vertex AI Veo did not return a valid video payload.');
+    throw lastError || new Error('Failed to generate video after multiple attempts');
 
   } catch (error) {
-    logger.error(`[VERTEX VIDEO ERROR] ${error.message} - Helper fallback normally would trigger here.`);
-    throw error;
+    logger.error(`[VERTEX VIDEO ERROR] ${error.message}`);
+    // DO NOT throw error here, return null so the main function can use fallback
+    return null;
   }
 };
 
