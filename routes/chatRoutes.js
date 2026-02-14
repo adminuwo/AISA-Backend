@@ -14,7 +14,7 @@ import Reminder from "../models/Reminder.js";
 import { requiresWebSearch, extractSearchQuery, processSearchResults, getWebSearchSystemInstruction } from "../utils/webSearch.js";
 import { performWebSearch } from "../services/searchService.js";
 import { convertFile } from "../utils/fileConversion.js";
-import { generateVideoFromPrompt } from "../controllers/videoController.js";
+import { generateVideoFromPrompt, generateVideoWithPollinations } from "../controllers/videoController.js";
 import { generateImageFromPrompt } from "../controllers/image.controller.js";
 import { getMemoryContext, extractUserMemory, updateMemory } from "../utils/memoryService.js";
 
@@ -769,7 +769,20 @@ Do not output any other text or explanation if you are triggering these actions.
             finalResponse.videoUrl = videoUrl;
             finalResponse.reply = (reply && reply.trim()) ? reply : `Sure, I've generated a video based on your request: "${data.prompt}"`;
           } else {
-            finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+            // Fallback logic for video generation
+            console.warn(`[VIDEO GEN] Primary generation failed. Attempting fallback...`);
+            try {
+              const fallbackUrl = await generateVideoWithPollinations(data.prompt);
+              if (fallbackUrl) {
+                finalResponse.imageUrl = fallbackUrl; // Use imageUrl field for the preview
+                finalResponse.reply = `The video generation service is currently busy (high traffic). I've generated a high-quality preview image for "${data.prompt}" instead.`;
+              } else {
+                finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+              }
+            } catch (fallbackErr) {
+              console.error(`[VIDEO FAIL] Fallback also failed: ${fallbackErr.message}`);
+              finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+            }
           }
         }
         else if (data.action === 'generate_image' && data.prompt) {

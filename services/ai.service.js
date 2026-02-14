@@ -129,7 +129,7 @@ export const chat = async (message, activeDocContent = null, options = {}) => {
             console.log("================================");
 
             // Threshold for "Relevance" (0.7 = High Similarity)
-            const THRESHOLD = 0.7;
+            const THRESHOLD = 0.72;
             const relevantDocs = resultsWithScore.filter(([doc, score]) => {
                 logger.info(`[RAG Search] Doc Score: ${score.toFixed(4)} - Content: ${doc.pageContent.substring(0, 50)}...`);
                 return score >= THRESHOLD;
@@ -144,7 +144,7 @@ export const chat = async (message, activeDocContent = null, options = {}) => {
                 // IMPORTANT: If we found RAG docs, the prompt in GroqService interprets this as "Your Document".
                 // Ideally we want to distinguish "Company Documents" vs "Chat Upload".
                 // Since GroqService just has one "Context" slot, we can prepend a header to contextText.
-                contextText = "SOURCE: COMPANY KNOWLEDGE BASE\n\n" + contextText;
+                contextText = "SOURCE: COMPANY KNOWLEDGE BASE\nIMPORTANT: The information below is retrieved from the company knowledge base (UWO/AI Mall). ONLY use this information if the user's question specifically relates to the company, its products, or services. If the user asks a general question (e.g. coding help, definitions, general knowledge), IGNORE this context and answer generally. Do NOT mention the company or this context if it is irrelevant to the user's query.\n\n" + contextText;
 
                 // PRIORITY 2: Answer from Company RAG
                 return await vertexService.askVertex(message, contextText);
