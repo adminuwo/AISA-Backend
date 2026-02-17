@@ -5,6 +5,7 @@ import { uploadToCloudinary } from '../services/cloudinary.service.js';
 import { Storage } from '@google-cloud/storage';
 import { GoogleGenAI } from '@google/genai';
 import { v4 as uuidv4 } from 'uuid';
+import fs from 'fs';
 
 // Initialize Google Cloud Storage
 // Ensure this doesn't crash if credentials are missing during startup
@@ -66,22 +67,58 @@ export const generateVideo = async (req, res) => {
 const TARGET_SERVICE_ACCOUNT = 'video-signer@ai-mall-484810.iam.gserviceaccount.com';
 
 async function createImpersonatedStorageClient() {
-  const auth = new GoogleAuth({
-    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  });
+  const projectId = process.env.GCP_PROJECT_ID || 'ai-mall-484810';
+  logger.info(`[AuthDebug] Creating Impersonated Client for Project: ${projectId}`);
 
-  const sourceClient = await auth.getClient();
+  try {
+    const auth = new GoogleAuth({
+      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+      projectId: projectId,
+    });
 
-  const impersonatedClient = new Impersonated({
-    sourceClient,
-    targetPrincipal: TARGET_SERVICE_ACCOUNT,
-    lifetime: 3600, // seconds (max 3600)
-    targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
-  });
+    const sourceClient = await auth.getClient();
+    logger.info(`[AuthDebug] Source Client fetched. Email: ${sourceClient.email || 'Unknown'}`);
 
-  return new Storage({
-    authClient: impersonatedClient,
-  });
+    const impersonatedClient = new Impersonated({
+      sourceClient,
+      targetPrincipal: TARGET_SERVICE_ACCOUNT,
+      lifetime: 3600, // seconds (max 3600)
+      targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
+    });
+
+    const storage = new Storage({
+      projectId: projectId,
+    });
+
+    // Override authClient because Storage constructor wraps Impersonated client in GoogleAuth,
+    // which fails to use impersonation for signing. We provide a wrapper that delegates to Impersonated client.
+    storage.authClient = {
+      getCredentials: async () => {
+        logger.info('[AuthDebug] Wrapper.getCredentials called');
+        return { client_email: TARGET_SERVICE_ACCOUNT };
+      },
+      sign: async (blobToSign) => {
+        logger.info('[AuthDebug] Wrapper.sign called');
+        try {
+          const response = await impersonatedClient.sign(blobToSign);
+          if (!response || !response.signedBlob) {
+            logger.error('[AuthDebug] Sign response missing signedBlob');
+            throw new Error('Sign response missing signedBlob');
+          }
+          return response.signedBlob;
+        } catch (err) {
+          logger.error(`[AuthDebug] Wrapper.sign failed: ${err.message}`);
+          throw err;
+        }
+      },
+      getProjectId: async () => projectId
+    };
+
+    return storage;
+  } catch (err) {
+    logger.error(`[AuthDebug] createImpersonatedStorageClient FAILED: ${err.message}`);
+    throw err;
+  }
 }
 
 /**
@@ -102,7 +139,7 @@ async function getVideoSignedUrl(bucketName, filePath) {
   return url;
 }
 
-import fs from 'fs';
+
 export const generateVideoFromPrompt = async (prompt, duration, quality) => {
   const logDebug = (msg) => {
     try { fs.appendFileSync('debug_video.log', `${new Date().toISOString()} - ${msg}\n`); } catch (e) { }
