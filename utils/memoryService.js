@@ -37,6 +37,8 @@ export const extractUserMemory = async (content, history = []) => {
             if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
                 text = candidate.content.parts[0].text;
             }
+        } else if (response.text) {
+            text = response.text;
         }
 
         // Find JSON in response
