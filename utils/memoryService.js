@@ -27,7 +27,17 @@ export const extractUserMemory = async (content, history = []) => {
 
         const result = await model.generateContent(prompt);
         const response = await result.response;
-        const text = response.text();
+
+        let text = '';
+        if (typeof response.text === 'function') {
+            text = response.text();
+        } else if (response.candidates && response.candidates.length > 0) {
+            // Handle Vertex AI response structure
+            const candidate = response.candidates[0];
+            if (candidate.content && candidate.content.parts && candidate.content.parts.length > 0) {
+                text = candidate.content.parts[0].text;
+            }
+        }
 
         // Find JSON in response
         const jsonMatch = text.match(/\{[\s\S]*\}/);

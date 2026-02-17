@@ -1,7 +1,19 @@
 import axios from 'axios';
 import logger from '../utils/logger.js';
-import { GoogleAuth } from 'google-auth-library';
+import { GoogleAuth, Impersonated } from 'google-auth-library';
 import { uploadToCloudinary } from '../services/cloudinary.service.js';
+import { Storage } from '@google-cloud/storage';
+import { GoogleGenAI } from '@google/genai';
+import { v4 as uuidv4 } from 'uuid';
+
+// Initialize Google Cloud Storage
+// Ensure this doesn't crash if credentials are missing during startup
+let storage;
+try {
+  storage = new Storage();
+} catch (err) {
+  logger.warn(`[GCS] Failed to initialize Google Cloud Storage: ${err.message}`);
+}
 
 // Video generation using external APIs (e.g., Replicate, Runway, or similar)
 export const generateVideo = async (req, res) => {
@@ -42,21 +54,6 @@ export const generateVideo = async (req, res) => {
   } catch (error) {
     logger.error(`[VIDEO ERROR] ${error.message}`);
 
-    // Fallback to Pollinations (Image)
-    try {
-      logger.info("[VIDEO] Falling back to Pollinations Image Generation...");
-      const imageUrl = await generateVideoWithPollinations(prompt);
-
-      if (imageUrl) {
-        return res.status(200).json({
-          success: true,
-          imageUrl: imageUrl,
-          message: "Video generation service busy. Generated a preview image instead."
-        });
-      }
-    } catch (fallbackError) {
-      logger.error(`[FALLBACK ERROR] ${fallbackError.message}`);
-    }
 
     return res.status(500).json({
       success: false,
@@ -65,104 +62,140 @@ export const generateVideo = async (req, res) => {
   }
 };
 
-// Function to generate video using Replicate or Fallback
-// Function to generate video using Vertex AI (Veo Model) or Fallback
-export const generateVideoFromPrompt = async (prompt, duration, quality) => {
-  try {
-    logger.info('[VIDEO] Attempting generation via Vertex AI Veo (veo-001-preview)...');
+// Function to generate video using Vertex AI (Veo Model) via @google/genai
+const TARGET_SERVICE_ACCOUNT = 'video-signer@ai-mall-484810.iam.gserviceaccount.com';
 
-    const auth = new GoogleAuth({
-      scopes: 'https://www.googleapis.com/auth/cloud-platform',
-      projectId: process.env.GCP_PROJECT_ID || process.env.PROJECT_ID
+async function createImpersonatedStorageClient() {
+  const auth = new GoogleAuth({
+    scopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+
+  const sourceClient = await auth.getClient();
+
+  const impersonatedClient = new Impersonated({
+    sourceClient,
+    targetPrincipal: TARGET_SERVICE_ACCOUNT,
+    lifetime: 3600, // seconds (max 3600)
+    targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
+  });
+
+  return new Storage({
+    authClient: impersonatedClient,
+  });
+}
+
+/**
+ * Generates a browser-playable signed video URL
+ */
+async function getVideoSignedUrl(bucketName, filePath) {
+  const storage = await createImpersonatedStorageClient();
+
+  const [url] = await storage
+    .bucket(bucketName)
+    .file(filePath)
+    .getSignedUrl({
+      version: 'v4',
+      action: 'read',
+      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+      responseType: 'video/mp4',
     });
-    const client = await auth.getClient();
-    const projectId = await auth.getProjectId();
-    const accessTokenResponse = await client.getAccessToken();
-    const token = accessTokenResponse.token || accessTokenResponse;
+  return url;
+}
 
-    // Use Veo model
-    const modelId = 'veo-001-preview';
-    const location = 'us-central1'; // Veo is available in us-central1
-    const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
+import fs from 'fs';
+export const generateVideoFromPrompt = async (prompt, duration, quality) => {
+  const logDebug = (msg) => {
+    try { fs.appendFileSync('debug_video.log', `${new Date().toISOString()} - ${msg}\n`); } catch (e) { }
+  };
 
-    // Retry Logic with Exponential Backoff
-    const maxRetries = 3;
-    let attempt = 0;
-    let lastError = null;
+  try {
+    const projectId = process.env.GCP_PROJECT_ID || 'ai-mall-484810';
+    const location = 'us-central1';
+    const bucketName = 'aisageneratedvideo';
 
-    while (attempt < maxRetries) {
-      try {
-        if (attempt > 0) {
-          const delay = Math.pow(2, attempt) * 1000;
-          logger.info(`[VIDEO] Retrying attempt ${attempt + 1}/${maxRetries} after ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-        }
+    logDebug(`Starting generation for prompt: ${prompt}`);
+    logger.info(`[VIDEO] Starting generation flow via Vertex AI (Standard ADC)...`);
 
-        const response = await axios.post(
-          endpoint,
-          {
-            instances: [{ prompt: prompt }],
-            parameters: {
-              video_length_seconds: duration || 5, // Veo param might use underscores
-              sampleCount: 1,
-              aspectRatio: "16:9"
-            }
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            }
-          }
-        );
+    // 1. INITIALIZE VERTEX AI CLIENT (Standard ADC)
+    // We rely on the environment's ADC (User or Runtime SA) for generation permission
+    const client = new GoogleGenAI({
+      vertexai: true,
+      project: projectId,
+      location: location,
+    });
 
-        if (response.data && response.data.predictions && response.data.predictions[0]) {
-          const prediction = response.data.predictions[0];
+    // 2. PREPARE OUTPUT URI
+    const fileName = `${uuidv4()}.mp4`;
+    const outputGcsUri = `gs://${bucketName}/${fileName}`;
+    logDebug(`Output URI: ${outputGcsUri}`);
+    logger.info(`[VIDEO] Output URI: ${outputGcsUri}`);
 
-          // Veo often returns a 'video' object containing 'bytesBase64Encoded' OR 'gcsUri'
-          // We check for base64 first
-          let base64Data = prediction.bytesBase64Encoded || prediction.video?.bytesBase64Encoded;
+    // 3. START GENERATION
+    let operation = await client.models.generateVideos({
+      model: 'veo-3.1-fast-generate-001',
+      prompt: prompt,
+      config: {
+        aspectRatio: '16:9',
+        outputGcsUri: outputGcsUri,
+      },
+    });
 
-          // As valid fallback for older models or variations
-          if (!base64Data && typeof prediction === 'string') {
-            base64Data = prediction;
-          }
+    logDebug(`Operation started: ${operation.name}`);
+    logger.info(`[VIDEO] Operation started (Name: ${operation.name}). Polling...`);
 
-          if (base64Data) {
-            const buffer = Buffer.from(base64Data, 'base64');
-            // Upload to Cloudinary
-            const uploadResult = await uploadToCloudinary(buffer, {
-              resource_type: 'video',
-              folder: 'aisa_generated_videos'
-            });
-            logger.info(`[VERTEX VEO] Uploaded to Cloudinary: ${uploadResult.secure_url}`);
-            return uploadResult.secure_url;
-          } else {
-            logger.warn("[VERTEX VEO] No base64 data found. Full prediction keys:", Object.keys(prediction));
-            // If we got a successful response structure but no data, likely a model specific output format issue, don't retry same call
-            throw new Error('Vertex AI Veo returned valid response structure but invalid payload format.');
-          }
-        }
-
-        throw new Error('Vertex AI Veo did not return a valid video payload.');
-
-      } catch (err) {
-        lastError = err;
-        // Only retry on 429 or 5xx errors
-        if (err.response && (err.response.status === 429 || err.response.status >= 500)) {
-          logger.warn(`[VIDEO RETRY] Attempt ${attempt + 1} failed: ${err.message}`);
-          attempt++;
-        } else {
-          // If it's a 400 or other client error, don't retry
-          throw err;
-        }
-      }
+    // 4. POLL FOR COMPLETION
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 15000)); // 15s interval
+      operation = await client.operations.get({ operation: operation });
+      logDebug(`Polling status: ${operation.done ? 'Done' : 'In Progress'}`);
+      logger.info(`[VIDEO] Polling status: ${operation.done ? 'Done' : 'In Progress'}`);
     }
 
-    throw lastError || new Error('Failed to generate video after multiple attempts');
+    // 5. CHECK FOR ERRORS
+    if (operation.error) {
+      logDebug(`Operation Error: ${JSON.stringify(operation.error)}`);
+      logger.error(`[VIDEO] Operation Error: ${JSON.stringify(operation.error, null, 2)}`);
+      throw new Error(`Video generation failed: ${operation.error.message || 'Unknown error from Vertex AI'}`);
+    }
+
+    // 6. PROCESS SUCCESS RESPONSE
+    if (operation.response && operation.response.generatedVideos && operation.response.generatedVideos.length > 0) {
+      const videoUri = operation.response.generatedVideos[0].video.uri;
+      logDebug(`Generation complete. URI: ${videoUri}`);
+      logger.info(`[VIDEO] Generation complete. GCS URI: ${videoUri}`);
+
+      // Extract path for signing
+      const bucketPrefix = `gs://${bucketName}/`;
+      let finalFileName = fileName;
+      if (videoUri.startsWith(bucketPrefix)) {
+        finalFileName = videoUri.slice(bucketPrefix.length);
+      }
+
+      logDebug(`Generating Signed URL for: ${finalFileName}`);
+      logger.info(`[VIDEO] Generating Signed URL for: ${finalFileName} using ${TARGET_SERVICE_ACCOUNT}`);
+
+      // 7. GENERATE SIGNED URL (using Impersonated Storage Client)
+      try {
+        const url = await getVideoSignedUrl(bucketName, finalFileName);
+
+        logDebug(`Success! Signed URL: ${url}`);
+        logger.info(`[VIDEO] Success! Signed URL: ${url}`);
+        return url;
+      } catch (signError) {
+        logDebug(`Signing failed: ${signError.message}`);
+        logger.error(`[VIDEO] Signing failed: ${signError.message}`);
+        throw new Error(`Failed to sign video URL: ${signError.message}`);
+      }
+
+    } else {
+      logDebug(`No videos returned. Full op: ${JSON.stringify(operation)}`);
+      logger.error(`[VIDEO] Operation returned no videos. full op: ${JSON.stringify(operation, null, 2)}`);
+      throw new Error('Video generation completed but returned no results.');
+    }
 
   } catch (error) {
     logger.error(`[VERTEX VIDEO ERROR] ${error.message}`);
+    try { fs.appendFileSync('debug_video.log', `${new Date().toISOString()} - ERROR: ${error.message}\n`); } catch (e) { }
     // DO NOT throw error here, return null so the main function can use fallback
     return null;
   }
@@ -172,6 +205,8 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
 const pollReplicateResult = async (predictionId, apiKey, maxAttempts = 60) => {
   try {
     for (let i = 0; i < maxAttempts; i++) {
+      // ... (implementation preserved if needed, or can be removed if unused)
+      // Since I removed the call to this, I can also remove this function or leave it as utility
       const response = await axios.get(
         `https://api.replicate.com/v1/predictions/${predictionId}`,
         {
@@ -195,23 +230,6 @@ const pollReplicateResult = async (predictionId, apiKey, maxAttempts = 60) => {
   } catch (error) {
     logger.error(`[POLL ERROR] ${error.message}`);
     throw error;
-  }
-};
-
-// Alternative: Generate video using Pollinations API (free)
-export const generateVideoWithPollinations = async (prompt, duration, quality) => {
-  try {
-    // Pollinations offers free video generation via API
-    // Pollinations offers free generation via API
-    // Note: Video generation endpoint is deprecated/moved. Using high-quality image as preview.
-    // Using the /p/ endpoint which is more reliable for the new version
-    const videoUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}`;
-
-    logger.info(`[POLLINATIONS VIDEO] Generated: ${videoUrl}`);
-    return videoUrl;
-  } catch (error) {
-    logger.error(`[POLLINATIONS ERROR] ${error.message}`);
-    return null;
   }
 };
 

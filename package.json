@@ -13,8 +13,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/storage": "^7.19.0",
     "@google-cloud/text-to-speech": "^6.4.0",
     "@google-cloud/vertexai": "^1.10.0",
+    "@google/genai": "^1.41.0",
     "@google/generative-ai": "^0.24.1",
     "@langchain/community": "^1.1.1",
     "@langchain/core": "^1.1.8",
