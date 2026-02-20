@@ -16,7 +16,6 @@ env_variables:
   # Or use Secret Manager for sensitive keys
   # -------------------------------------------------------------
   GCP_PROJECT_ID: 'ai-mall-484810'
-  MONGODB_ATLAS_URI: 'YOUR_MONGODB_CONNECTION_STRING_HERE'
-  GEMINI_API_KEY: 'YOUR_GEMINI_API_KEY_HERE'
+  MONGODB_ATLAS_URI: 'mongodb+srv://adminuwo:[EMAIL_ADDRESS]/?appName=Cluster0'
   RAZORPAY_KEY_ID: 'YOUR_RAZORPAY_KEY_ID'
   RAZORPAY_KEY_SECRET: 'YOUR_RAZORPAY_SECRET'

@@ -64,10 +64,10 @@ export const generateVideo = async (req, res) => {
 };
 
 // Function to generate video using Vertex AI (Veo Model) via @google/genai
-const TARGET_SERVICE_ACCOUNT = 'video-signer@ai-mall-484810.iam.gserviceaccount.com';
+const TARGET_SERVICE_ACCOUNT = process.env.VIDEO_SERVICE_ACCOUNT;
 
 async function createImpersonatedStorageClient() {
-  const projectId = process.env.GCP_PROJECT_ID || 'ai-mall-484810';
+  const projectId = process.env.GCP_PROJECT_ID;
   logger.info(`[AuthDebug] Creating Impersonated Client for Project: ${projectId}`);
 
   try {
@@ -146,7 +146,7 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
   };
 
   try {
-    const projectId = process.env.GCP_PROJECT_ID || 'ai-mall-484810';
+    const projectId = process.env.GCP_PROJECT_ID;
     const location = 'us-central1';
     const bucketName = 'aisageneratedvideo';
 
