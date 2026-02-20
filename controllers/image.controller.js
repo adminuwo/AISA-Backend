@@ -24,9 +24,8 @@ export const generateImageFromPrompt = async (prompt) => {
         const accessTokenResponse = await client.getAccessToken();
         const token = accessTokenResponse.token || accessTokenResponse;
 
-        const location = 'us-central1';
-        // Try Imagen 3.0 Generate 002 or fallback to 001
-        const modelId = 'imagen-3.0-generate-001';
+        const location = 'asia-south1';
+        const modelId = 'imagen-4.0-ultra-generate-001';
         const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
 
         const response = await axios.post(

@@ -169,7 +169,7 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
 
     // 3. START GENERATION
     let operation = await client.models.generateVideos({
-      model: 'veo-3.1-fast-generate-001',
+      model: 'veo-3.1-generate-preview',
       prompt: prompt,
       config: {
         aspectRatio: '16:9',
