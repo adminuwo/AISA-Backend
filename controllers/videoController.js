@@ -131,9 +131,9 @@ async function getVideoSignedUrl(bucketName, filePath) {
     .bucket(bucketName)
     .file(filePath)
     .getSignedUrl({
-      version: 'v4',
+      version: 'v2', // v2 allows expiration > 7 days
       action: 'read',
-      expires: Date.now() + 60 * 60 * 1000, // 1 hour
+      expires: Date.now() + 10 * 24 * 60 * 60 * 1000, // 10 days
       responseType: 'video/mp4',
     });
   return url;
@@ -297,5 +297,30 @@ export const getVideoStatus = async (req, res) => {
       success: false,
       message: 'Failed to get video status'
     });
+  }
+};
+
+// Download video through backend proxy to bypass CORS
+export const downloadVideo = async (req, res) => {
+  try {
+    const { videoUrl } = req.body;
+
+    if (!videoUrl) {
+      return res.status(400).json({ success: false, message: 'Video URL is required' });
+    }
+
+    const response = await axios({
+      method: 'GET',
+      url: videoUrl,
+      responseType: 'stream',
+    });
+
+    res.setHeader('Content-Disposition', 'attachment; filename="aisa-generated-video.mp4"');
+    res.setHeader('Content-Type', 'video/mp4');
+
+    response.data.pipe(res);
+  } catch (error) {
+    logger.error(`[DOWNLOAD ERROR] Failed to download video: ${error.message}`);
+    res.status(500).json({ success: false, message: 'Failed to download video' });
   }
 };
