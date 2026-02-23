@@ -19,8 +19,23 @@ try {
 // Video generation using external APIs (e.g., Replicate, Runway, or similar)
 export const generateVideo = async (req, res) => {
   try {
-    const { prompt, duration = 5, quality = 'medium' } = req.body;
+    const { prompt, duration = 5, quality = 'medium', aspectRatio } = req.body;
     const userId = req.user?.id;
+
+    let finalAspectRatio = '16:9';
+    if (aspectRatio) {
+      finalAspectRatio = aspectRatio;
+    }
+
+    if (prompt && typeof prompt === 'string') {
+      if (prompt.includes('9:16')) {
+        finalAspectRatio = '9:16';
+      } else if (prompt.includes('1:1')) {
+        finalAspectRatio = '1:1';
+      } else if (prompt.includes('16:9')) {
+        finalAspectRatio = '16:9';
+      }
+    }
 
     if (!prompt || typeof prompt !== 'string') {
       return res.status(400).json({
@@ -33,7 +48,7 @@ export const generateVideo = async (req, res) => {
 
     // Example using Replicate API for video generation
     // You can replace this with your preferred video generation service
-    const videoUrl = await generateVideoFromPrompt(prompt, duration, quality);
+    const videoUrl = await generateVideoFromPrompt(prompt, duration, quality, finalAspectRatio);
 
     // If generateVideoFromPrompt returns null, it failed internally.
     // We can proceed to fallback logic below if videoUrl is null.
@@ -140,7 +155,7 @@ async function getVideoSignedUrl(bucketName, filePath) {
 }
 
 
-export const generateVideoFromPrompt = async (prompt, duration, quality) => {
+export const generateVideoFromPrompt = async (prompt, duration, quality, aspectRatio = '16:9') => {
   const logDebug = (msg) => {
     try { fs.appendFileSync('debug_video.log', `${new Date().toISOString()} - ${msg}\n`); } catch (e) { }
   };
@@ -172,7 +187,7 @@ export const generateVideoFromPrompt = async (prompt, duration, quality) => {
       model: 'veo-3.1-generate-preview',
       prompt: prompt,
       config: {
-        aspectRatio: '16:9',
+        aspectRatio: aspectRatio,
         outputGcsUri: outputGcsUri,
       },
     });
