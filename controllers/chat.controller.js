@@ -1,6 +1,7 @@
 import * as aiService from '../services/ai.service.js';
 import logger from '../utils/logger.js';
 import Conversation from '../models/Conversation.model.js';
+import User from '../models/User.js';
 import { uploadToCloudinary } from '../services/cloudinary.service.js';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
@@ -20,13 +21,22 @@ export const chat = async (req, res, next) => {
             return res.status(400).json({ success: false, message: 'Message or attachment is required' });
         }
 
+        // Try to get user name if authenticated
+        let userName = null;
+        if (req.user && req.user.id) {
+            const user = await User.findById(req.user.id).select('name');
+            if (user) userName = user.name;
+        }
+
         // 1. Get AI Response (Pass detailed context)
         const responseText = await aiService.chat(message, activeDocContent, {
             systemInstruction,
             mode,
             images: image,
-            documents: document
+            documents: document,
+            userName
         });
+
 
         // 2. Persist to DB
         let conversation;

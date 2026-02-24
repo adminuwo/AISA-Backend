@@ -3,13 +3,12 @@ import axios from 'axios';
 import logger from '../utils/logger.js';
 import { GoogleAuth } from 'google-auth-library';
 
-// Helper function to generate image using Vertex AI (Imagen 3)
-export const generateImageFromPrompt = async (prompt) => {
+// Helper function to generate or modify image using Vertex AI
+export const generateImageFromPrompt = async (prompt, originalImage = null) => {
     try {
-        console.log(`[VERTEX IMAGE] Triggered for: "${prompt}"`);
+        console.log(`[VERTEX IMAGE] Triggered for: "${prompt}" (Edit: ${!!originalImage})`);
 
         // Check if we have credentials to even attempt Vertex
-        // If not, skip directly to fallback to save time and error logs
         if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GCP_PROJECT_ID) {
             throw new Error("Missing GCP Credentials/Project ID - Skipping Vertex");
         }
@@ -25,13 +24,29 @@ export const generateImageFromPrompt = async (prompt) => {
         const token = accessTokenResponse.token || accessTokenResponse;
 
         const location = 'asia-south1';
-        const modelId = 'imagen-4.0-ultra-generate-001';
+
+        // Use image-editing-001 for modifications, imagen-3-generate-001 (or similar) for generation
+        // Note: original model ID was 'imagen-4.0-ultra-generate-001' which might be a future/internal name
+        // We'll use the standard 'image-editing-001' for edits and 'imagen-3.0-generate-002' or similar for generation
+        const modelId = originalImage ? 'image-editing-001' : 'imagen-3.0-generate-002';
         const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
+
+        const instance = { prompt: prompt };
+        if (originalImage) {
+            instance.image = {
+                bytesBase64Encoded: originalImage.base64Data || originalImage
+            };
+
+            // Special handling for "remove text" to improve results
+            if (prompt.toLowerCase().includes('remove') && prompt.toLowerCase().includes('text')) {
+                // You might want to use specific editing parameters here if supported
+            }
+        }
 
         const response = await axios.post(
             endpoint,
             {
-                instances: [{ prompt: prompt }],
+                instances: [instance],
                 parameters: {
                     sampleCount: 1,
                     aspectRatio: "1:1",
@@ -44,7 +59,7 @@ export const generateImageFromPrompt = async (prompt) => {
                     'Authorization': `Bearer ${token}`,
                     'Content-Type': 'application/json'
                 },
-                timeout: 25000 // 25s timeout
+                timeout: 30000 // 30s timeout
             }
         );
 
@@ -56,14 +71,14 @@ export const generateImageFromPrompt = async (prompt) => {
                 const buffer = Buffer.from(base64Data, 'base64');
                 const cloudResult = await uploadToCloudinary(buffer, {
                     folder: 'generated_images',
-                    public_id: `gen_${Date.now()}`
+                    public_id: `img_${originalImage ? 'mod' : 'gen'}_${Date.now()}`
                 });
                 logger.info(`[VERTEX IMAGE] Success: ${cloudResult.secure_url}`);
                 return cloudResult.secure_url;
             }
         }
 
-        throw new Error('Vertex AI did not return valid image data.');
+        throw new Error(`Vertex AI (${modelId}) did not return valid image data.`);
 
     } catch (error) {
         const errorMsg = error.message || "Unknown error";

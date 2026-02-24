@@ -120,7 +120,14 @@ UWO - Company Profile Deck
         if (req.user) {
           memoryContext = await getMemoryContext(req.user.id);
           if (req.user.name) {
-            nameUsageInstruction = `[NAME USAGE]: User is ${req.user.name}. Occasionally and naturally include their name in the response (20-30% of messages).`;
+            nameUsageInstruction = `
+[NAME USAGE RULE]:
+User's Name is "${req.user.name}". 
+- Use the user's name naturally and frequently (e.g., "Bilkul ${req.user.name} 👍", "Sunno ${req.user.name}...").
+- Start your response with a friendly, personalized acknowledgment.
+- Maintain a proactive Hinglish/conversational vibe.
+- Categorize options with emojis and always end with leading questions (👉).
+`;
           }
         }
         const combinedSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n\n${systemInstruction || ""}`;
@@ -128,6 +135,7 @@ UWO - Company Profile Deck
         // Standard OpenAI Format Preparation
         const formattedMessages = [
           { role: 'system', content: combinedSystemInstruction },
+
           ...(history || []).map(msg => ({
             role: msg.role === 'model' ? 'assistant' : 'user',
             content: msg.content
@@ -216,11 +224,10 @@ UWO - Company Profile Deck
       if (req.user.name) {
         nameUsageInstruction = `
 [NAME USAGE RULE]:
-User's Name: ${req.user.name}
-Occassionally (roughly 20-30% of the time), naturally include the user's name in your response to make it feel more personal and ChatGPT-like. 
-- Use it for: Encouragement, acknowledging a good point, or starting a detailed suggestion.
-- Example: "Great point, ${req.user.name}!", "${req.user.name}, here is what you can do..."
-- DO NOT: Use it in every message, repeat it in every paragraph, or use it in consecutive responses.
+User's Name is "${req.user.name}". 
+- Use the user's name naturally and frequently (e.g., "Bilkul ${req.user.name} 👍", "Sunno ${req.user.name}...").
+- Start your response with a friendly, personalized acknowledgment.
+- Maintain a proactive Hinglish/conversational vibe.
 `;
       }
     }
@@ -235,15 +242,23 @@ Occassionally (roughly 20-30% of the time), naturally include the user's name in
     } else {
       // Only add standard rules for non-specialized modes to avoid instruction collision
       const MANDATORY_JSON_RULES = `
-MANDATORY: If the user asks to GENERATE AN IMAGE, output ONLY:
-{"action": "generate_image", "prompt": "detailed description"}
+MANDATORY INTERACTIVE RULES:
+- Use ONLY vertical layouts for lists. No mixed paragraphs for offers/questions.
+- Provide clear, structured categorization using emojis (📱, 💻, 🤖, etc.) on new lines.
+- PROACTIVELY OFFER HELP: List 3-5 specific things you can do vertically under "**Agar tum chaho to main:**".
+  ✅ [Action 1]
+  ✅ [Action 2]
+- LEADING QUESTIONS: Always end your response under "**Bas mujhe batao:**" followed by 2-3 specific "👉" questions on new lines.
+- Maintain the "Gauhar" persona style (Hinglish + Proactive).
 
-MANDATORY: If the user asks to GENERATE A VIDEO, output ONLY:
-{"action": "generate_video", "prompt": "detailed description"}
+MANDATORY MEDIA RULES:
+- If generating IMAGE: Output ONLY {"action": "generate_image", "prompt": "..."}
+- If generating VIDEO: Output ONLY {"action": "generate_video", "prompt": "..."}
+`;
 
-Do not output any other text or explanation if you are triggering these actions.`;
       finalSystemInstruction = `${finalSystemInstruction}\n\n${MANDATORY_JSON_RULES}`;
     }
+
 
     // Add conversation history if available
     if (history && Array.isArray(history)) {
@@ -726,7 +741,7 @@ Do not output any other text or explanation if you are triggering these actions.
 
         // 2. Fallback: classic greedy Regex (works for 99% of simple cases)
         // Matches { ... "action": "generate_video" ... }
-        const simpleRegex = /\{[\s\S]*?["']action["']\s*:\s*["'](generate_video|generate_image)["'][\s\S]*?\}/;
+        const simpleRegex = /\{[\s\S]*?["']action["']\s*:\s*["'](generate_video|generate_image|modify_image)["'][\s\S]*?\}/;
         const simpleMatch = text.match(simpleRegex);
         if (simpleMatch) {
           try {
@@ -737,7 +752,7 @@ Do not output any other text or explanation if you are triggering these actions.
         }
 
         // 3. Fallback for Array format [ { ... } ]
-        const arrayRegex = /\[\s*\{[\s\S]*?["']action["']\s*:\s*["'](generate_video|generate_image)["'][\s\S]*?\}\s*\]/;
+        const arrayRegex = /\[\s*\{[\s\S]*?["']action["']\s*:\s*["'](generate_video|generate_image|modify_image)["'][\s\S]*?\}\s*\]/;
         const arrayMatch = text.match(arrayRegex);
         if (arrayMatch) {
           try {
@@ -772,6 +787,60 @@ Do not output any other text or explanation if you are triggering these actions.
             // Fallback logic for video generation
             console.warn(`[VIDEO GEN] Primary generation failed.`);
             finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+          }
+        }
+        else if (data.action === 'modify_image' && data.prompt) {
+          console.log(`[IMAGE MOD] Calling modifier for: ${data.prompt}`);
+
+          // Find the source image to modify
+          let sourceImage = null;
+
+          // 1. Check current turn attachments
+          if (Array.isArray(image) && image.length > 0) {
+            sourceImage = image[0];
+          } else if (image && image.base64Data) {
+            sourceImage = image;
+          }
+
+          // 2. If nothing in current turn, look back in history
+          if (!sourceImage && history && Array.isArray(history)) {
+            console.log("[IMAGE MOD] No image in current turn, searching history...");
+            for (let i = history.length - 1; i >= 0; i--) {
+              const prevMsg = history[i];
+              if (prevMsg.attachments && Array.isArray(prevMsg.attachments)) {
+                const prevImage = prevMsg.attachments.find(a =>
+                  a.type === 'image' || (a.mimeType && a.mimeType.startsWith('image/'))
+                );
+                // In history, images might be stored as Cloudinary URLs or data URLs
+                // If it's a data URL, we can extract base64
+                if (prevImage && prevImage.url && prevImage.url.startsWith('data:')) {
+                  sourceImage = {
+                    mimeType: prevImage.url.substring(prevImage.url.indexOf(':') + 1, prevImage.url.indexOf(';')),
+                    base64Data: prevImage.url.split(',')[1]
+                  };
+                  console.log("[IMAGE MOD] Found image data in recent history.");
+                  break;
+                }
+                // If it's a Cloudinary URL, we'd need to fetch and convert to base64
+                // For now, let's prioritize data URLs which are common in recent history before saving
+              }
+            }
+          }
+
+          if (sourceImage) {
+            try {
+              // We'll need to update generateImageFromPrompt to handle modification
+              const imageUrl = await generateImageFromPrompt(data.prompt, sourceImage);
+              if (imageUrl) {
+                finalResponse.imageUrl = imageUrl;
+                finalResponse.reply = (reply && reply.trim()) ? reply : `I've updated the image according to your request: "${data.prompt}"`;
+              }
+            } catch (imgError) {
+              console.error(`[IMAGE MOD] Modification failed: ${imgError.message}`);
+              finalResponse.reply = (reply && reply.trim()) ? reply : `I tried to modify the image but encountered an error: ${imgError.message}`;
+            }
+          } else {
+            finalResponse.reply = "I couldn't find an image to modify. Please make sure you've uploaded an image.";
           }
         }
         else if (data.action === 'generate_image' && data.prompt) {

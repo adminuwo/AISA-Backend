@@ -10,8 +10,15 @@ const MODES = {
   CONTENT_WRITING: 'CONTENT_WRITING',
   CODING_HELP: 'CODING_HELP',
   TASK_ASSISTANT: 'TASK_ASSISTANT',
-  DEEP_SEARCH: 'DEEP_SEARCH'
+  DEEP_SEARCH: 'DEEP_SEARCH',
+  IMAGE_EDIT: 'IMAGE_EDIT'
 };
+
+const EDIT_KEYWORDS = [
+  'edit', 'modify', 'change', 'remove', 'add', 'background', 'enhance', 'remix', 'clean up',
+  'background remove', 'bg remove', 'remix this', 'enhance this', 'is image me', 'is photo me',
+  'badal do', 'hata do', 'saaf kar do'
+];
 
 const CODING_KEYWORDS = [
   'code', 'function', 'class', 'debug', 'error', 'bug', 'programming',
@@ -58,17 +65,27 @@ export function detectMode(message = '', attachments = []) {
 
   console.log(`[MODE DETECTION] Processing message: "${lowerMessage}" with ${attachments ? attachments.length : 0} attachments`);
 
-  // Priority 1: File Analysis/Conversion - if attachments are present
+  // Priority 1: File Analysis/Conversion/Edit - if attachments are present
   if (hasAttachments) {
-    // Check if it's a conversion request with attachments
-    const matchedKeyword = CONVERSION_KEYWORDS.find(keyword => lowerMessage.includes(keyword));
+    const hasImages = attachments.some(a => (a.type && a.type.startsWith('image')) || (a.mimeType && a.mimeType.startsWith('image')));
 
-    if (matchedKeyword) {
-      console.log(`[MODE DETECTION] Detected conversion keyword: "${matchedKeyword}". Setting mode to FILE_CONVERSION.`);
+    // Check for conversion first
+    const matchedConversion = CONVERSION_KEYWORDS.find(keyword => lowerMessage.includes(keyword));
+    if (matchedConversion) {
+      console.log(`[MODE DETECTION] Detected conversion keyword: "${matchedConversion}". Setting mode to FILE_CONVERSION.`);
       return MODES.FILE_CONVERSION;
     }
 
-    console.log(`[MODE DETECTION] No conversion keyword found. Defaulting to FILE_ANALYSIS.`);
+    // Check for image edit if images are present
+    if (hasImages) {
+      const matchedEdit = EDIT_KEYWORDS.find(keyword => lowerMessage.includes(keyword));
+      if (matchedEdit) {
+        console.log(`[MODE DETECTION] Detected image edit keyword: "${matchedEdit}". Setting mode to IMAGE_EDIT.`);
+        return MODES.IMAGE_EDIT;
+      }
+    }
+
+    console.log(`[MODE DETECTION] No specialized file keyword found. Defaulting to FILE_ANALYSIS.`);
     return MODES.FILE_ANALYSIS;
   }
 

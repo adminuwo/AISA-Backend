@@ -7,6 +7,8 @@ import Knowledge from "../models/Knowledge.model.js";
 import { Worker } from 'worker_threads';
 import path from 'path';
 import * as vertexService from './vertex.service.js';
+import * as openaiService from './openai.service.js';
+
 
 // Initialize Groq Chat Model - REMOVED (Replaced by groq.service.js)
 // const model = new ChatGroq({ ... });
@@ -84,21 +86,34 @@ export const chat = async (message, activeDocContent = null, options = {}) => {
         }
 
         // Extract options
-        const { systemInstruction, mode, images, documents } = options;
+        const { systemInstruction, mode, images, documents, userName } = options;
 
         // PRIORITY 1: Chat-Uploaded Document and System Instructions
         // If we have specific system instructions (like Conversion Mode), we prioritize passing them.
         if (systemInstruction || (activeDocContent && activeDocContent.length > 0) || (images && images.length > 0)) {
             logger.info("[Chat Routing] Using Custom Request (System Instruction / Active Doc / Images).");
 
-            // Pass all context to vertexService
-            return await vertexService.askVertex(message, activeDocContent, {
+            // If images are present, we use Vertex (as it's the media engine)
+            // If it's just text/docs, we use OpenAI as per user request
+            if (images && images.length > 0) {
+                logger.info("[Chat Routing] Image(s) detected. Routing to Vertex.");
+                return await vertexService.askVertex(message, activeDocContent, {
+                    systemInstruction,
+                    mode,
+                    images,
+                    documents
+                });
+            }
+
+            logger.info("[Chat Routing] Text/Doc detected. Routing to OpenAI.");
+            return await openaiService.askOpenAI(message, activeDocContent, {
                 systemInstruction,
                 mode,
-                images,
-                documents
+                documents,
+                userName
             });
         }
+
 
         // PRIORITY 2: Company Knowledge Base (RAG)
         const docCount = await Knowledge.countDocuments();
@@ -146,17 +161,20 @@ export const chat = async (message, activeDocContent = null, options = {}) => {
                 // Since GroqService just has one "Context" slot, we can prepend a header to contextText.
                 contextText = "SOURCE: COMPANY KNOWLEDGE BASE\nIMPORTANT: The information below is retrieved from the company knowledge base (UWO/AI Mall). ONLY use this information if the user's question specifically relates to the company, its products, or services. If the user asks a general question (e.g. coding help, definitions, general knowledge), IGNORE this context and answer generally. Do NOT mention the company or this context if it is irrelevant to the user's query.\n\n" + contextText;
 
-                // PRIORITY 2: Answer from Company RAG
-                return await vertexService.askVertex(message, contextText);
+                // PRIORITY 2: Answer from Company RAG - Routing to OpenAI
+                return await openaiService.askOpenAI(message, contextText, { userName });
+
 
             } else {
                 logger.info(`[RAG] No relevant chunks found (All scores < ${THRESHOLD}). Fallback to General Knowledge.`);
             }
         }
 
-        // PRIORITY 3: Answer from General Knowledge (Explicit No Context)
-        logger.info("[Chat Routing] Answering from General Knowledge (Vertex).");
-        return await vertexService.askVertex(message, null);
+        // PRIORITY 3: Answer from General Knowledge (Explicit No Context) - Routing to OpenAI
+        logger.info("[Chat Routing] Answering from General Knowledge (OpenAI).");
+        return await openaiService.askOpenAI(message, null, { userName });
+
+
 
     } catch (error) {
         logger.error(`Chat Handling Error: ${error.message}`);

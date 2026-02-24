@@ -1,6 +1,8 @@
 import AIBIZHistory from "../models/AIBIZHistory.js";
 import { vertexAI } from "../config/vertex.js";
+import * as openaiService from "../services/openai.service.js";
 import mongoose from "mongoose";
+
 
 // Using gemini-1.5-flash as it is the standard model configured in this project
 // equivalent to gemini-2.5-flash from the original AIBIZ code if it was a typo or alias
@@ -88,12 +90,9 @@ Follow this structure:
 ${sections}
 `;
 
-        const result = await bizModel.generateContent({
-            contents: [{ role: "user", parts: [{ text: prompt }] }],
+        const text = await openaiService.askOpenAI(prompt, null, {
+            systemInstruction: "You are AIBIZ, a senior startup & business strategy consultant."
         });
-
-        const text =
-            result?.response?.candidates?.[0]?.content?.parts?.[0]?.text;
 
         if (!text) {
             return res.status(500).json({
@@ -101,6 +100,7 @@ ${sections}
                 error: "No content generated",
             });
         }
+
 
         /* -------- SAVE TO MONGODB -------- */
         const saved = await AIBIZHistory.create({
