@@ -622,8 +622,8 @@ MANDATORY MEDIA RULES:
             systemInstruction: finalSystemInstruction
           });
 
-          // Add timeout to prevent hanging
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 20000));
+          // Add timeout to prevent hanging (increased to 60s for cold starts)
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 60000));
           const resultPromise = model.generateContent({ contents: [contentPayload] });
 
           const result = await Promise.race([resultPromise, timeoutPromise]);

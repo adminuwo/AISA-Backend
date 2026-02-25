@@ -42,9 +42,15 @@ const PORT = process.env.PORT || 8080;
 
 
 // Connect to Database
-connectDB().then(() => {
+connectDB().then(async () => {
   console.log("Database connection attempt finished, initializing services...");
-  // aibaseService init removed
+  try {
+    const { initializeFromDB } = await import('./services/ai.service.js');
+    await initializeFromDB();
+    console.log("✅ AI Services (Embeddings & Vector Store) pre-initialized.");
+  } catch (err) {
+    console.error("❌ Failed to pre-initialize AI services:", err.message);
+  }
 }).catch(error => {
   console.error("Database connection failed during startup:", error);
 });
