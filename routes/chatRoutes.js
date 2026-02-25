@@ -6,7 +6,7 @@ import userModel from "../models/User.js";
 import Guest from "../models/Guest.js";
 import { verifyToken, optionalVerifyToken } from "../middleware/authorization.js";
 import { identifyGuest } from "../middleware/guestMiddleware.js";
-import { uploadToCloudinary } from "../services/cloudinary.service.js";
+import { uploadToCloudinary, upload } from "../services/cloudinary.service.js";
 import mammoth from "mammoth";
 import { detectMode, getModeSystemInstruction } from "../utils/modeDetection.js";
 import { detectIntent, extractReminderDetails, detectLanguage, getVoiceSystemInstruction } from "../utils/voiceAssistant.js";
@@ -844,22 +844,58 @@ MANDATORY MEDIA RULES:
           }
         }
         else if (data.action === 'generate_image' && data.prompt) {
-          console.log(`[IMAGE GEN] Calling generator for: ${data.prompt}`);
-          // Use a shorter version of prompt for Fallback just in case
-          const safePrompt = data.prompt.length > 400 ? data.prompt.substring(0, 400) : data.prompt;
+          // ===== AISA BRANDED IMAGE INTERCEPT =====
+          // Smart detection: "aisa" alone is too broad (it's a common Hindi word meaning "like this")
+          // We only intercept if the user is CLEARLY talking about the AISA AI product.
+          const contentLower = (content || '').toLowerCase();
+          const imageCreationWords = /\b(post|banner|image|photo|design|graphic|poster|thumbnail|logo|flyer|card|generate|bana|banao|create)\b/i;
+          const aisaProductPhrases = [
+            /\baisa\s*(ka|ke|ki|ko|ke\s+liye|ai|app|agent|assistant)\b/i,  // "AISA ka", "AISA ke liye", "AISA AI"
+            /\baisa™\b/i,                                                    // "AISA™"
+            /\bai\s*super\s*assistant\b/i,                                   // "AI Super Assistant"
+            /\buwo\b/i,                                                      // "UWO" brand
+            /artificial\s+intelligence\s+super/i,                           // Full product name
+          ];
+
+          const isAboutAISAProduct = aisaProductPhrases.some(p => p.test(content || '')) && imageCreationWords.test(content || '');
+          // Also check if AI already mentioned AISA product in its own generated prompt
+          const aiPromptMentionsAISA = /\baisa™?\b/i.test(data.prompt) && /\b(uwo|super\s*assistant|neural|purple|branded)\b/i.test(data.prompt);
+
+          const isAisaRelatedRequest = isAboutAISAProduct || aiPromptMentionsAISA;
+
+          let finalImagePrompt = data.prompt;
+          if (isAisaRelatedRequest) {
+            const userReqLower = contentLower;
+            let style = 'social media post (vertical 1080x1080)';
+            if (userReqLower.includes('instagram')) style = 'Instagram post (square 1080x1080)';
+            else if (userReqLower.includes('facebook')) style = 'Facebook post (landscape 1200x630)';
+            else if (userReqLower.includes('banner')) style = 'website banner (wide 1920x600)';
+            else if (userReqLower.includes('logo')) style = 'logo design (square minimal)';
+            else if (userReqLower.includes('poster')) style = 'vertical poster (portrait 1080x1920)';
+            else if (userReqLower.includes('thumbnail')) style = 'YouTube thumbnail (1280x720)';
+            else if (userReqLower.includes('whatsapp')) style = 'WhatsApp status (vertical 1080x1920)';
+
+            finalImagePrompt = `A premium ultra-modern ${style} for AISA™ — Artificial Intelligence Super Assistant by UWO™. Color palette: deep purple (#6C3CE1) to electric blue (#4A90D9) gradient background. Center: Large bold futuristic white text "AISA™". Below it: tagline "Your AI Super Assistant" in clean white. Background elements: glowing AI brain / neural network lines, subtle particle effects, soft light rays. Bottom: "Powered by UWO™ | uwo24.com" in small white text. Style: Apple / Google product launch level quality. No human faces. No random photos. Pure digital graphic product poster.`;
+            console.log(`[IMAGE GEN] ✅ AISA product image detected. Using branded prompt.`);
+          } else {
+            console.log(`[IMAGE GEN] Standard image request. Using AI-generated prompt.`);
+          }
+          // ===== END AISA INTERCEPT =====
+
+          console.log(`[IMAGE GEN] Calling generator for: ${finalImagePrompt}`);
+          const safePrompt = finalImagePrompt.length > 500 ? finalImagePrompt.substring(0, 500) : finalImagePrompt;
 
           try {
-            const imageUrl = await generateImageFromPrompt(data.prompt);
+            const imageUrl = await generateImageFromPrompt(finalImagePrompt);
             if (imageUrl) {
               finalResponse.imageUrl = imageUrl;
-              // Ensure reply is set, fallback to default if empty
-              finalResponse.reply = (reply && reply.trim()) ? reply : `Here is the image you requested for: "${data.prompt}"`;
+              finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `Here is the image you requested.`);
             }
           } catch (imgError) {
             console.warn(`[IMAGE GEN] Vertex failed. Falling back to Pollinations.`);
             const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(safePrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}&model=flux`;
             finalResponse.imageUrl = pollinationsUrl;
-            finalResponse.reply = (reply && reply.trim()) ? reply : `I've generated this image for you based on: "${data.prompt}"`;
+            finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `I've generated this image for you.`);
           }
         }
       }
@@ -1306,6 +1342,29 @@ router.delete('/:sessionId', optionalVerifyToken, identifyGuest, async (req, res
     res.json({ message: 'History cleared' });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// =========================================================
+// PDF UPLOAD ENDPOINT — for WhatsApp/In-App sharing
+// Accepts PDF blob, uploads to Cloudinary, returns public URL
+// =========================================================
+
+router.post('/upload-pdf', upload.single('pdf'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No PDF file provided' });
+    }
+    const result = await uploadToCloudinary(req.file.buffer, {
+      resource_type: 'raw',
+      folder: 'aisa_pdfs',
+      format: 'pdf',
+      public_id: `aisa_pdf_${Date.now()}`,
+    });
+    return res.status(200).json({ url: result.secure_url });
+  } catch (err) {
+    console.error('[PDF UPLOAD ERROR]', err);
+    return res.status(500).json({ error: 'PDF upload failed', details: err.message });
   }
 });
 
