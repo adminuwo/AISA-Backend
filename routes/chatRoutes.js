@@ -216,6 +216,45 @@ User's Name is "${req.user.name}".
     // Construct parts from history + current message
     let parts = [];
 
+    // --- DUPLICATE QUESTION DETECTION (SEARCH ACROSS ALL SESSIONS) ---
+    let duplicateNote = "";
+    if (content && content.length > 10) {
+      const searchCriteria = req.user 
+        ? { userId: req.user.id } 
+        : (req.guest ? { guestId: req.guest.guestId } : null);
+
+      if (searchCriteria) {
+        try {
+          const prevMatch = await ChatSession.findOne({
+            ...searchCriteria,
+            'messages.content': content,
+            'messages.role': 'user'
+          }).select('messages lastModified');
+
+          if (prevMatch) {
+            // Find the specific message to get its timestamp
+            const msgMatch = prevMatch.messages.find(m => m.content === content && m.role === 'user');
+            if (msgMatch) {
+              const prevDate = new Date(msgMatch.timestamp || prevMatch.lastModified).toLocaleDateString('en-GB', {
+                day: '2-digit', month: '2-digit', year: '2-digit'
+              });
+              
+              // Only alert if it's not the same message in the CURRENT history part vs some OLD content
+              // (Simplistic check: if history is very short or different, it's likely a repeat)
+              duplicateNote = `
+[DUPLICATE QUESTION ALERT]:
+The user has asked this exact question before on ${prevDate}.
+- Politely acknowledge this: "Aapne ye sawal pehle bhi ${prevDate} ko pucha tha!"
+- Tell them: "Ab isme hum kya kar sakte hain?"
+- Suggest new things they can do relative to this topic.
+- Use a friendly "Aapne ye question pehle kiya tha ab isme kiya jaana hai" tone.
+`;
+            }
+          }
+        } catch (dbErr) { console.error("Duplicate search failed:", dbErr); }
+      }
+    }
+
     // --- PERSONAL MEMORY CONTEXT (OPTIONAL/AUTHENTICATED) ---
     let memoryContext = "";
     let nameUsageInstruction = "";
@@ -235,7 +274,7 @@ User's Name is "${req.user.name}".
     // Use mode-specific system instruction, or fallback to provided systemInstruction
     // CRITICAL: Merge with official branding from vertex.js to prevent hallucination
     let baseInstruction = systemInstruction || modeSystemInstruction;
-    let finalSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n\n[SESSION CONTEXT]:\n${baseInstruction}`;
+    let finalSystemInstruction = `${systemInstructionText}\n${memoryContext}\n${nameUsageInstruction}\n${duplicateNote}\n\n[SESSION CONTEXT]:\n${baseInstruction}`;
 
     if (detectedMode === 'FILE_CONVERSION' || detectedMode === 'FILE_ANALYSIS') {
       finalSystemInstruction = modeSystemInstruction;
