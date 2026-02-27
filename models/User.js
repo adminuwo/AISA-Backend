@@ -127,13 +127,23 @@ const userSchema = new mongoose.Schema({
     },
     plan: {
         type: String,
-        enum: ['Basic', 'Pro', 'King'],
-        default: 'Basic'
+        enum: ['basic', 'pro', 'king'],
+        default: 'basic'
+    },
+    planStartDate: {
+        type: Date,
+        default: Date.now
+    },
+    planEndDate: {
+        type: Date
+    },
+    isActive: {
+        type: Boolean,
+        default: true
     },
     subscription: {
         id: String,
         status: String,
-        currentPeriodEnd: Date,
         razorpay_payment_id: String,
         razorpay_order_id: String,
         razorpay_signature: String

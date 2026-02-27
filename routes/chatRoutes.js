@@ -17,6 +17,7 @@ import { convertFile } from "../utils/fileConversion.js";
 import { generateVideoFromPrompt } from "../controllers/videoController.js";
 import { generateImageFromPrompt } from "../controllers/image.controller.js";
 import { getMemoryContext, extractUserMemory, updateMemory } from "../utils/memoryService.js";
+import subscriptionService from "../services/subscriptionService.js";
 
 import axios from "axios";
 
@@ -56,6 +57,31 @@ router.post("/", optionalVerifyToken, identifyGuest, async (req, res) => {
     const limitCheck = await checkGuestLimits(req, sessionId);
     if (!limitCheck.allowed) {
       return res.status(403).json({ error: "LIMIT_REACHED", reason: limitCheck.reason });
+    }
+
+    // --- SUBSCRIPTION PLAN CHECKS ---
+    let usageResult = null;
+    if (req.user) {
+      try {
+        let feature = 'chat';
+        if (mode === 'DEEP_SEARCH' || requiresWebSearch(content)) feature = 'deepSearch';
+        else if (mode === 'CODE_WRITER') feature = 'codeWriter';
+        else if (mode === 'DOCUMENT_CONVERT' || mode === 'FILE_CONVERSION' || document) feature = 'document';
+        
+        usageResult = await subscriptionService.checkLimit(req.user.id, feature);
+      } catch (subError) {
+        if (subError.code === "PLAN_LIMIT_REACHED") {
+          return res.status(403).json({ 
+            success: false, 
+            code: "PLAN_LIMIT_REACHED", 
+            message: subError.message,
+            plan: subError.plan,
+            feature: subError.feature,
+            limit: subError.limit
+          });
+        }
+        console.error("Subscription check error:", subError);
+      }
     }
 
     // --- UWO & AISA BRANDING CHECKS (HIGH PRIORITY) ---
@@ -982,8 +1008,10 @@ MANDATORY MEDIA RULES:
       }
     }
 
-    if (req.user) {
+    if (req.user && usageResult) {
       extractUserMemory(content, history).then(mem => updateMemory(req.user.id, mem, detectedMode));
+      // Increment usage
+      subscriptionService.incrementUsage(usageResult.usage, usageResult.usageKey);
     }
 
     return res.status(200).json(finalResponse);

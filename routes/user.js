@@ -170,6 +170,19 @@ route.get("/notifications", verifyToken, async (req, res) => {
     }
 });
 
+// GET /api/user/subscription - Get user subscription and usage status
+route.get("/subscription", verifyToken, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { default: subscriptionService } = await import('../services/subscriptionService.js');
+        const status = await subscriptionService.getUsageStatus(userId);
+        res.status(200).json(status);
+    } catch (error) {
+        console.error("[FETCH SUBSCRIPTION STATUS ERROR]", error);
+        res.status(500).json({ msg: "Failed to fetch subscription status", error: error.message });
+    }
+});
+
 // DELETE /api/user/notifications/:notifId - Delete a notification
 route.delete("/notifications/:notifId", verifyToken, async (req, res) => {
     try {

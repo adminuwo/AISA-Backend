@@ -121,6 +121,12 @@ export const synthesizeSpeech = async (req, res) => {
 
         console.log("✅ [VoiceController] TTS successful, audio size:", audioData.length);
 
+        // Increment usage if successful
+        if (req.monthlyUsage && req.usageKey) {
+            const { default: subscriptionService } = await import('../services/subscriptionService.js');
+            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        }
+
         // Return the audio content
         res.set({
             'Content-Type': 'audio/mpeg',
@@ -264,6 +270,12 @@ export const synthesizeFile = async (req, res) => {
 
         const audioData = Buffer.concat(audioBuffers);
         console.log(`✅ [VoiceController] Synthesis Complete. Total Audio Size: ${audioData.length} bytes`);
+
+        // Increment usage if successful
+        if (req.monthlyUsage && req.usageKey) {
+            const { default: subscriptionService } = await import('../services/subscriptionService.js');
+            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        }
 
         res.set({
             'Content-Type': 'audio/mpeg',

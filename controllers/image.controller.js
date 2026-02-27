@@ -23,36 +23,48 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
         const accessTokenResponse = await client.getAccessToken();
         const token = accessTokenResponse.token || accessTokenResponse;
 
-        const location = 'asia-south1';
+        // Edits generally work best in us-central1 with specific capability models
+        const location = originalImage ? 'us-central1' : 'asia-south1';
 
-        // Use image-editing-001 for modifications, imagen-3-generate-001 (or similar) for generation
-        // Note: original model ID was 'imagen-4.0-ultra-generate-001' which might be a future/internal name
-        // We'll use the standard 'image-editing-001' for edits and 'imagen-3.0-generate-002' or similar for generation
-        const modelId = originalImage ? 'image-editing-001' : 'imagen-3.0-generate-002';
+        // We'll use the robust 'imagegeneration@006' capable of mask-free editMode
+        const modelId = originalImage ? 'imagegeneration@006' : 'imagen-3.0-generate-002';
         const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
 
         const instance = { prompt: prompt };
+        let parameters = {
+            sampleCount: 1,
+            aspectRatio: "1:1",
+            safetyFilterLevel: "block_low_and_above",
+            personGeneration: "allow_adult"
+        };
+        
         if (originalImage) {
+            // For editing on imagegeneration@006 we just use 'image'
             instance.image = {
                 bytesBase64Encoded: originalImage.base64Data || originalImage
             };
-
-            // Special handling for "remove text" to improve results
-            if (prompt.toLowerCase().includes('remove') && prompt.toLowerCase().includes('text')) {
-                // You might want to use specific editing parameters here if supported
+            
+            // Format parameters specifically for editing capabilities
+            let editModeConfig = "inpainting-insert";
+            
+            // If they want to remove background, 'product-image' is best
+            if (prompt.toLowerCase().includes('remove') && prompt.toLowerCase().includes('background')) {
+                editModeConfig = "product-image";
             }
+            
+            parameters = {
+                sampleCount: 1,
+                editConfig: {
+                     editMode: editModeConfig
+                }
+            };
         }
 
         const response = await axios.post(
             endpoint,
             {
                 instances: [instance],
-                parameters: {
-                    sampleCount: 1,
-                    aspectRatio: "1:1",
-                    safetyFilterLevel: "block_low_and_above",
-                    personGeneration: "allow_all"
-                }
+                parameters: parameters
             },
             {
                 headers: {
@@ -134,6 +146,12 @@ export const generateImage = async (req, res, next) => {
             throw new Error("Failed to retrieve image URL from any source.");
         }
 
+        // Increment usage if successful
+        if (req.monthlyUsage && req.usageKey) {
+            const { default: subscriptionService } = await import('../services/subscriptionService.js');
+            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        }
+
         res.status(200).json({
             success: true,
             data: imageUrl
@@ -149,3 +167,58 @@ export const generateImage = async (req, res, next) => {
     }
 };
 
+// @desc    Edit/Modify Image
+// @route   POST /api/image/edit
+// @access  Private
+export const editImage = async (req, res, next) => {
+    try {
+        const { prompt, imageUrl, imageBase64 } = req.body || {};
+
+        if (!prompt) {
+            return res.status(400).json({ success: false, message: 'Editing prompt is required' });
+        }
+
+        if (!imageUrl && !imageBase64) {
+            return res.status(400).json({ success: false, message: 'Image (URL or Base64) is required for editing' });
+        }
+
+        console.log(`[Image Editing] Processing: "${prompt}"`);
+
+        let imageToProcess = imageBase64;
+
+        // If we only have a URL, we might need to fetch it and convert to base64 for Vertex 
+        // Or Vertex might accept the URL directly? StandardVertex often wants bytes.
+        if (imageUrl && !imageBase64) {
+            try {
+                const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                imageToProcess = Buffer.from(response.data).toString('base64');
+            } catch (err) {
+                console.error("[Image Editing] Failed to fetch image from URL:", err.message);
+                throw new Error("Failed to process the source image URL.");
+            }
+        }
+
+        const modifiedImageUrl = await generateImageFromPrompt(prompt, imageToProcess);
+
+        if (!modifiedImageUrl) {
+            throw new Error("Failed to retrieve modified image URL.");
+        }
+
+        // Increment usage if successful (Using 'image' limit for now)
+        if (req.monthlyUsage && req.usageKey) {
+            const { default: subscriptionService } = await import('../services/subscriptionService.js');
+            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        }
+
+        res.status(200).json({
+            success: true,
+            data: modifiedImageUrl
+        });
+    } catch (error) {
+        console.error(`[Image Editing] Critical Error: ${error.message}`);
+        res.status(500).json({
+            success: false,
+            message: `Image editing failed: ${error.message}`
+        });
+    }
+};
