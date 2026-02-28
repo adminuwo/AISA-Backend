@@ -9,7 +9,10 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 
+import { OAuth2Client } from "google-auth-library";
+
 const router = express.Router();
+const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Test routes
 router.get("/", (req, res) => {
@@ -205,6 +208,86 @@ router.post("/login", async (req, res) => {
   } catch (err) {
     console.error("Login Error:", err);
     res.status(500).json({ error: "Server error during login" });
+  }
+});
+
+// ====================== GOOGLE AUTH =======================
+router.post("/google", async (req, res) => {
+  const { credential, email, name, picture } = req.body;
+
+  try {
+    // Verify the access token by calling Google's userinfo endpoint
+    let googleEmail = email;
+    let googleName = name;
+    let googlePicture = picture;
+
+    if (credential) {
+      try {
+        const axios = (await import('axios')).default;
+        const userInfoRes = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${credential}` }
+        });
+        // Use verified data from Google
+        googleEmail = userInfoRes.data.email;
+        googleName = userInfoRes.data.name;
+        googlePicture = userInfoRes.data.picture;
+      } catch (verifyErr) {
+        console.error("[Google Auth] Token verification failed:", verifyErr.message);
+        return res.status(401).json({ error: "Invalid Google token" });
+      }
+    }
+
+    if (!googleEmail) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    // 1. Find user by email
+    let user = await UserModel.findOne({ email: googleEmail });
+
+    if (!user) {
+      console.log(`[Google Auth] Creating new user for: ${googleEmail}`);
+      user = await UserModel.create({
+        name: googleName || "Google User",
+        email: googleEmail,
+        password: crypto.randomBytes(16).toString("hex"),
+        avatar: googlePicture || '/User.jpeg',
+        isVerified: true,
+        notificationsInbox: [
+          {
+            id: `welcome_${Date.now()}_1`,
+            title: 'Welcome to AISA!',
+            desc: 'Start your journey with your Artificial Intelligence Super Assistant via Google Login!',
+            type: 'promo',
+            time: new Date()
+          }
+        ]
+      });
+    } else {
+      console.log(`[Google Auth] User logged in: ${googleEmail}`);
+      if ((user.avatar === '/User.jpeg' || !user.avatar) && googlePicture) {
+        user.avatar = googlePicture;
+        await user.save();
+      }
+    }
+
+    // 2. Generate token
+    const token = generateTokenAndSetCookies(res, user._id, user.email, user.name);
+
+    res.status(200).json({
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      message: "LogIn Successfully via Google",
+      token: token,
+      role: user.role,
+      plan: user.plan,
+      avatar: user.avatar,
+      notifications: user.notificationsInbox
+    });
+
+  } catch (error) {
+    console.error("Google Auth Error:", error);
+    res.status(500).json({ error: "Google Authentication failed" });
   }
 });
 
