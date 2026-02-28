@@ -844,14 +844,32 @@ MANDATORY MEDIA RULES:
 
         if (data.action === 'generate_video' && data.prompt) {
           console.log(`[VIDEO GEN] Calling generator for: ${data.prompt}`);
-          const videoUrl = await generateVideoFromPrompt(data.prompt, 5, 'medium');
-          if (videoUrl) {
-            finalResponse.videoUrl = videoUrl;
-            finalResponse.reply = (reply && reply.trim()) ? reply : `Sure, I've generated a video based on your request: "${data.prompt}"`;
+          let canGenerate = true;
+          let limitErrorMsg = null;
+          let limitUsageData = null;
+
+          if (req.user) {
+            try {
+              limitUsageData = await subscriptionService.checkLimit(req.user.id, 'video');
+            } catch (limitErr) {
+              canGenerate = false;
+              limitErrorMsg = limitErr.message;
+            }
+          }
+
+          if (!canGenerate) {
+            finalResponse.reply = `Sorry, you have reached your monthly Video limit. Please upgrade your plan to generate more.`;
           } else {
-            // Fallback logic for video generation
-            console.warn(`[VIDEO GEN] Primary generation failed.`);
-            finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+            const videoUrl = await generateVideoFromPrompt(data.prompt, 5, 'medium');
+            if (videoUrl) {
+              finalResponse.videoUrl = videoUrl;
+              finalResponse.reply = (reply && reply.trim()) ? reply : `Sure, I've generated a video based on your request: "${data.prompt}"`;
+              if (limitUsageData) subscriptionService.incrementUsage(limitUsageData.usage, limitUsageData.usageKey);
+            } else {
+              // Fallback logic for video generation
+              console.warn(`[VIDEO GEN] Primary generation failed.`);
+              finalResponse.reply = (reply && reply.trim()) ? reply : `I attempted to generate a video for "${data.prompt}" but encountered an error.`;
+            }
           }
         }
         else if (data.action === 'modify_image' && data.prompt) {
@@ -893,16 +911,32 @@ MANDATORY MEDIA RULES:
           }
 
           if (sourceImage) {
-            try {
-              // We'll need to update generateImageFromPrompt to handle modification
-              const imageUrl = await generateImageFromPrompt(data.prompt, sourceImage);
-              if (imageUrl) {
-                finalResponse.imageUrl = imageUrl;
-                finalResponse.reply = (reply && reply.trim()) ? reply : `I've updated the image according to your request: "${data.prompt}"`;
+            let canGenerate = true;
+            let limitUsageData = null;
+
+            if (req.user) {
+              try {
+                limitUsageData = await subscriptionService.checkLimit(req.user.id, 'image');
+              } catch (limitErr) {
+                canGenerate = false;
               }
-            } catch (imgError) {
-              console.error(`[IMAGE MOD] Modification failed: ${imgError.message}`);
-              finalResponse.reply = (reply && reply.trim()) ? reply : `I tried to modify the image but encountered an error: ${imgError.message}`;
+            }
+
+            if (!canGenerate) {
+              finalResponse.reply = `Sorry, you have reached your monthly Image limit. Please upgrade your plan to continue using this feature.`;
+            } else {
+              try {
+                // We'll need to update generateImageFromPrompt to handle modification
+                const imageUrl = await generateImageFromPrompt(data.prompt, sourceImage);
+                if (imageUrl) {
+                  finalResponse.imageUrl = imageUrl;
+                  finalResponse.reply = (reply && reply.trim()) ? reply : `I've updated the image according to your request: "${data.prompt}"`;
+                  if (limitUsageData) subscriptionService.incrementUsage(limitUsageData.usage, limitUsageData.usageKey);
+                }
+              } catch (imgError) {
+                console.error(`[IMAGE MOD] Modification failed: ${imgError.message}`);
+                finalResponse.reply = (reply && reply.trim()) ? reply : `I tried to modify the image but encountered an error: ${imgError.message}`;
+              }
             }
           } else {
             finalResponse.reply = "I couldn't find an image to modify. Please make sure you've uploaded an image.";
@@ -950,17 +984,34 @@ MANDATORY MEDIA RULES:
           console.log(`[IMAGE GEN] Calling generator for: ${finalImagePrompt}`);
           const safePrompt = finalImagePrompt.length > 500 ? finalImagePrompt.substring(0, 500) : finalImagePrompt;
 
-          try {
-            const imageUrl = await generateImageFromPrompt(finalImagePrompt);
-            if (imageUrl) {
-              finalResponse.imageUrl = imageUrl;
-              finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `Here is the image you requested.`);
+          let canGenerate = true;
+          let limitUsageData = null;
+
+          if (req.user) {
+            try {
+              limitUsageData = await subscriptionService.checkLimit(req.user.id, 'image');
+            } catch (limitErr) {
+              canGenerate = false;
             }
-          } catch (imgError) {
-            console.warn(`[IMAGE GEN] Vertex failed. Falling back to Pollinations.`);
-            const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(safePrompt)}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}&model=flux`;
-            finalResponse.imageUrl = pollinationsUrl;
-            finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `I've generated this image for you.`);
+          }
+
+          if (!canGenerate) {
+            finalResponse.reply = `Sorry, you have reached your monthly Image generation limit.`;
+          } else {
+            try {
+              const imageUrl = await generateImageFromPrompt(finalImagePrompt);
+              if (imageUrl) {
+                finalResponse.imageUrl = imageUrl;
+                finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `Here is the image you requested.`);
+                if (limitUsageData) subscriptionService.incrementUsage(limitUsageData.usage, limitUsageData.usageKey);
+              }
+            } catch (imgError) {
+              console.warn(`[IMAGE GEN] Vertex failed. Falling back to Pollinations.`);
+              const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(safePrompt)}?width=1024&height=1024&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
+              finalResponse.imageUrl = pollinationsUrl;
+              finalResponse.reply = (reply && reply.trim()) ? reply : (isAisaRelatedRequest ? `Yeh raha AISA™ ke liye branded image! 🚀` : `I've generated this image for you.`);
+              if (limitUsageData) subscriptionService.incrementUsage(limitUsageData.usage, limitUsageData.usageKey);
+            }
           }
         }
       }
@@ -971,10 +1022,22 @@ MANDATORY MEDIA RULES:
         const mdMatch = reply.match(mdImageRegex);
         if (mdMatch) {
           console.log("[MEDIA GEN] Found Pollinations markdown trigger.");
-          finalResponse.imageUrl = mdMatch[1];
-          // Remove the markdown tag from text to avoid double display
-          reply = reply.replace(mdMatch[0], '').trim();
-          finalResponse.reply = (reply && reply.trim()) ? reply : "Here is the image you requested.";
+          let canGenerate = true;
+          let limitUsageData = null;
+          if (req.user) {
+            try { limitUsageData = await subscriptionService.checkLimit(req.user.id, 'image'); } 
+            catch (limitErr) { canGenerate = false; }
+          }
+
+          if (!canGenerate) {
+            reply = reply.replace(mdMatch[0], '').trim();
+            finalResponse.reply = `Sorry, you have reached your monthly Image generation limit.`;
+          } else {
+            finalResponse.imageUrl = mdMatch[1];
+            reply = reply.replace(mdMatch[0], '').trim();
+            finalResponse.reply = (reply && reply.trim()) ? reply : "Here is the image you requested.";
+            if (limitUsageData) subscriptionService.incrementUsage(limitUsageData.usage, limitUsageData.usageKey);
+          }
         }
       }
 

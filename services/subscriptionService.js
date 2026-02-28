@@ -23,8 +23,8 @@ class SubscriptionService {
             usage = await MonthlyUsage.create({ userId, month: currentMonth });
         }
 
-        const plan = user.plan || 'basic';
-        const limits = PLAN_LIMITS[plan];
+        const plan = (user.plan || 'basic').toLowerCase();
+        const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
         const usageKey = getUsageKey(feature);
         
         const currentCount = usage[usageKey] || 0;
@@ -65,7 +65,8 @@ class SubscriptionService {
             usage = await MonthlyUsage.create({ userId, month: currentMonth });
         }
 
-        const planLimits = PLAN_LIMITS[user.plan || 'basic'];
+        const plan = (user.plan || 'basic').toLowerCase();
+        const planLimits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
 
         return {
             plan: user.plan,

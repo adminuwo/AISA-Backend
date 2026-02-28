@@ -32,6 +32,10 @@ export const createOrder = async (req, res) => {
             case 'king':
                 amount = 2499;
                 break;
+            case 'yearly':
+            case 'king_yearly':
+                amount = 4999;
+                break;
             default:
                 return res.status(400).json({ error: "Invalid plan selected" });
         }
@@ -107,18 +111,35 @@ export const verifyPayment = async (req, res) => {
         const isAuthentic = expectedSignature === razorpay_signature;
 
         if (isAuthentic) {
-            const capitalizedPlan = plan.trim().charAt(0).toUpperCase() + plan.trim().slice(1).toLowerCase();
-            const enumCorrectPlan = capitalizedPlan === 'King' ? 'King' : capitalizedPlan === 'Pro' ? 'Pro' : 'Basic';
+            let enumCorrectPlan = 'basic'; // Enforcing lowercase based on User Schema
+            const lowerPlan = plan.trim().toLowerCase();
+            let durationDays = 30; // Default monthly
+
+            if (lowerPlan.includes('king') || lowerPlan === 'yearly') {
+                enumCorrectPlan = 'king';
+                if (lowerPlan.includes('yearly') || lowerPlan === 'king_yearly') {
+                    durationDays = 425; // 365 Days + 60 Days (2 months free)
+                }
+            } else if (lowerPlan.includes('pro')) {
+                enumCorrectPlan = 'pro';
+                if (lowerPlan.includes('yearly')) {
+                    durationDays = 365 + 60; // For future proofing
+                }
+            }
+
+            const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
 
             // Update User Plan
             const updatedUser = await User.findByIdAndUpdate(
                 userId,
                 {
                     plan: enumCorrectPlan,
+                    planStartDate: new Date(),
+                    planEndDate: endDate,
                     'personalizations.account.subscriptionPlan': enumCorrectPlan,
                     subscription: {
                         status: 'active',
-                        currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+                        currentPeriodEnd: endDate,
                         razorpay_payment_id,
                         razorpay_order_id,
                         razorpay_signature

@@ -11,7 +11,14 @@ import fs from 'fs';
 // Ensure this doesn't crash if credentials are missing during startup
 let storage;
 try {
-  storage = new Storage();
+  const storageOptions = { projectId: process.env.GCP_PROJECT_ID };
+  // Use service account key file if available (takes priority over ADC user account)
+  const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+  if (credPath) {
+    storageOptions.keyFilename = credPath;
+  }
+  storage = new Storage(storageOptions);
+  logger.info('[GCS] Storage initialized' + (credPath ? ' with service account key' : ' with ADC'));
 } catch (err) {
   logger.warn(`[GCS] Failed to initialize Google Cloud Storage: ${err.message}`);
 }
@@ -61,8 +68,8 @@ export const generateVideo = async (req, res) => {
 
     // Increment usage if successful
     if (req.monthlyUsage && req.usageKey) {
-        const { default: subscriptionService } = await import('../services/subscriptionService.js');
-        await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+      const { default: subscriptionService } = await import('../services/subscriptionService.js');
+      await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
     }
 
     return res.status(200).json({
@@ -85,80 +92,7 @@ export const generateVideo = async (req, res) => {
 };
 
 // Function to generate video using Vertex AI (Veo Model) via @google/genai
-const TARGET_SERVICE_ACCOUNT = process.env.VIDEO_SERVICE_ACCOUNT;
-
-async function createImpersonatedStorageClient() {
-  const projectId = process.env.GCP_PROJECT_ID;
-  logger.info(`[AuthDebug] Creating Impersonated Client for Project: ${projectId}`);
-
-  try {
-    const auth = new GoogleAuth({
-      scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-      projectId: projectId,
-    });
-
-    const sourceClient = await auth.getClient();
-    logger.info(`[AuthDebug] Source Client fetched. Email: ${sourceClient.email || 'Unknown'}`);
-
-    const impersonatedClient = new Impersonated({
-      sourceClient,
-      targetPrincipal: TARGET_SERVICE_ACCOUNT,
-      lifetime: 3600, // seconds (max 3600)
-      targetScopes: ['https://www.googleapis.com/auth/cloud-platform'],
-    });
-
-    const storage = new Storage({
-      projectId: projectId,
-    });
-
-    // Override authClient because Storage constructor wraps Impersonated client in GoogleAuth,
-    // which fails to use impersonation for signing. We provide a wrapper that delegates to Impersonated client.
-    storage.authClient = {
-      getCredentials: async () => {
-        logger.info('[AuthDebug] Wrapper.getCredentials called');
-        return { client_email: TARGET_SERVICE_ACCOUNT };
-      },
-      sign: async (blobToSign) => {
-        logger.info('[AuthDebug] Wrapper.sign called');
-        try {
-          const response = await impersonatedClient.sign(blobToSign);
-          if (!response || !response.signedBlob) {
-            logger.error('[AuthDebug] Sign response missing signedBlob');
-            throw new Error('Sign response missing signedBlob');
-          }
-          return response.signedBlob;
-        } catch (err) {
-          logger.error(`[AuthDebug] Wrapper.sign failed: ${err.message}`);
-          throw err;
-        }
-      },
-      getProjectId: async () => projectId
-    };
-
-    return storage;
-  } catch (err) {
-    logger.error(`[AuthDebug] createImpersonatedStorageClient FAILED: ${err.message}`);
-    throw err;
-  }
-}
-
-/**
- * Generates a browser-playable signed video URL
- */
-async function getVideoSignedUrl(bucketName, filePath) {
-  const storage = await createImpersonatedStorageClient();
-
-  const [url] = await storage
-    .bucket(bucketName)
-    .file(filePath)
-    .getSignedUrl({
-      version: 'v2', // v2 allows expiration > 7 days
-      action: 'read',
-      expires: Date.now() + 10 * 24 * 60 * 60 * 1000, // 10 days
-      responseType: 'video/mp4',
-    });
-  return url;
-}
+// Removed `createImpersonatedStorageClient` and `getVideoSignedUrl` as we now upload to Cloudinary
 
 
 export const generateVideoFromPrompt = async (prompt, duration, quality, aspectRatio = '16:9') => {
@@ -229,20 +163,41 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
         finalFileName = videoUri.slice(bucketPrefix.length);
       }
 
-      logDebug(`Generating Signed URL for: ${finalFileName}`);
-      logger.info(`[VIDEO] Generating Signed URL for: ${finalFileName} using ${TARGET_SERVICE_ACCOUNT}`);
+      logDebug(`Uploading video to Cloudinary: ${finalFileName}`);
+      logger.info(`[VIDEO] Uploading video to Cloudinary: ${finalFileName}`);
 
-      // 7. GENERATE SIGNED URL (using Impersonated Storage Client)
+      // 7. DOWNLOAD FROM GCS using Storage SDK & UPLOAD TO CLOUDINARY
       try {
-        const url = await getVideoSignedUrl(bucketName, finalFileName);
+        logDebug(`Downloading video from GCS using Storage SDK...`);
+        logger.info(`[VIDEO] Downloading video from GCS using Storage SDK...`);
 
-        logDebug(`Success! Signed URL: ${url}`);
-        logger.info(`[VIDEO] Success! Signed URL: ${url}`);
+        // Initialize a fresh Storage client with explicit service account if available
+        const storageOptions = { projectId: projectId };
+        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+        if (credPath) {
+          storageOptions.keyFilename = credPath;
+        }
+        const gcsClient = new Storage(storageOptions);
+
+        const [videoBuffer] = await gcsClient.bucket(bucketName).file(finalFileName).download();
+        logDebug(`GCS download complete. Size: ${videoBuffer.length} bytes`);
+        logger.info(`[VIDEO] GCS download complete. Size: ${videoBuffer.length} bytes`);
+
+        logger.info(`[VIDEO] Uploading to Cloudinary...`);
+        const cloudResult = await uploadToCloudinary(videoBuffer, {
+          folder: 'generated_videos',
+          resource_type: 'video',
+          public_id: `aisa_vid_${Date.now()}`
+        });
+
+        const url = cloudResult.secure_url;
+        logDebug(`Success! Cloudinary URL: ${url}`);
+        logger.info(`[VIDEO] Success! Cloudinary URL: ${url}`);
         return url;
-      } catch (signError) {
-        logDebug(`Signing failed: ${signError.message}`);
-        logger.error(`[VIDEO] Signing failed: ${signError.message}`);
-        throw new Error(`Failed to sign video URL: ${signError.message}`);
+      } catch (uploadError) {
+        logDebug(`Upload/Download failed: ${uploadError.message}`);
+        logger.error(`[VIDEO] Upload/Download failed: ${uploadError.message}`);
+        throw new Error(`Failed to process and upload video: ${uploadError.message}`);
       }
 
     } else {

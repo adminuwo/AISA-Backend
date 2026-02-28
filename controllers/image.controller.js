@@ -10,12 +10,13 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
 
         // Check if we have credentials to even attempt Vertex
         if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GCP_PROJECT_ID) {
-            throw new Error("Missing GCP Credentials/Project ID - Skipping Vertex");
+            console.warn("[VERTEX IMAGE] Missing GCP Credentials/Project ID - Falling back to Pollinations");
+            throw new Error("Missing GCP Credentials");
         }
 
         const auth = new GoogleAuth({
             scopes: 'https://www.googleapis.com/auth/cloud-platform',
-            projectId: process.env.GCP_PROJECT_ID || process.env.PROJECT_ID
+            projectId: process.env.GCP_PROJECT_ID
         });
 
         const client = await auth.getClient();
@@ -23,70 +24,87 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
         const accessTokenResponse = await client.getAccessToken();
         const token = accessTokenResponse.token || accessTokenResponse;
 
-        // Edits generally work best in us-central1 with specific capability models
-        const location = originalImage ? 'us-central1' : 'asia-south1';
+        // Edits generally work best in us-central1
+        const location = 'us-central1';
 
-        // We'll use the robust 'imagegeneration@006' capable of mask-free editMode
-        const modelId = originalImage ? 'imagegeneration@006' : 'imagen-3.0-generate-002';
-        const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${modelId}:predict`;
+        // Try newest capability model first, fallback to @006 if it fails
+        const attemptVertexEdit = async (targetModel) => {
+            console.log(`[VERTEX] Attempting ${originalImage ? 'edit' : 'generate'} with ${targetModel} in ${location}...`);
+            const targetEndpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${location}/publishers/google/models/${targetModel}:predict`;
 
-        const instance = { prompt: prompt };
-        let parameters = {
-            sampleCount: 1,
-            aspectRatio: "1:1",
-            safetyFilterLevel: "block_low_and_above",
-            personGeneration: "allow_adult"
-        };
-        
-        if (originalImage) {
-            // For editing on imagegeneration@006 we just use 'image'
-            instance.image = {
-                bytesBase64Encoded: originalImage.base64Data || originalImage
-            };
-            
-            // Format parameters specifically for editing capabilities
-            let editModeConfig = "inpainting-insert";
-            
-            // If they want to remove background, 'product-image' is best
-            if (prompt.toLowerCase().includes('remove') && prompt.toLowerCase().includes('background')) {
-                editModeConfig = "product-image";
-            }
-            
-            parameters = {
-                sampleCount: 1,
-                editConfig: {
-                     editMode: editModeConfig
+            let instanceStruct = { prompt: prompt };
+            let paramStruct = { sampleCount: 1 };
+
+            if (originalImage) {
+                // Determine base64 data - allow both string and object formats
+                let base64Data = typeof originalImage === 'string' ? originalImage : (originalImage.base64Data || originalImage.image || originalImage.data);
+                
+                // Strip out data URL prefix if present
+                if (typeof base64Data === 'string' && base64Data.includes('base64,')) {
+                    base64Data = base64Data.split('base64,')[1];
                 }
-            };
+
+                if (targetModel.includes('capability')) {
+                    // Imagen 3.0 Capability configuration for mask-free editing
+                    instanceStruct.image = { bytesBase64Encoded: base64Data };
+                    // We omit editConfig entirely, Vertex AI will default to mask-free editing
+                    // because an image is provided without a mask or explicit editMode.
+                } else {
+                    // Old imagegeneration configuration
+                    instanceStruct.image = { bytesBase64Encoded: base64Data };
+                    paramStruct.editConfig = {
+                        editMode: prompt.toLowerCase().includes('background') ? "product-image" : "inpainting-insert"
+                    };
+                }
+            }
+
+            return await axios.post(targetEndpoint,
+                { instances: [instanceStruct], parameters: paramStruct },
+                {
+                    headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+                    timeout: 60000
+                }
+            );
+        };
+
+        let response;
+        let modelId = originalImage ? 'imagen-3.0-capability-001' : 'imagen-3.0-generate-001';
+        
+        try {
+            response = await attemptVertexEdit(modelId);
+        } catch (err) {
+            console.warn(`[VERTEX WARNING] ${modelId} failed: ${err.message}. Data: ${JSON.stringify(err.response?.data)}. Trying alternative...`);
+            if (!originalImage) {
+                modelId = 'imagegeneration@006';
+                try {
+                    response = await attemptVertexEdit(modelId);
+                } catch (err2) {
+                    console.warn(`[VERTEX WARNING] ${modelId} failed: ${err2.message}`);
+                    throw err2;
+                }
+            } else {
+                throw err;
+            }
         }
 
-        const response = await axios.post(
-            endpoint,
-            {
-                instances: [instance],
-                parameters: parameters
-            },
-            {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                },
-                timeout: 30000 // 30s timeout
-            }
-        );
+        console.log(`[VERTEX RESPONSE] Status: ${response.status}, Model: ${modelId}`);
 
         if (response.data && response.data.predictions && response.data.predictions[0]) {
             const prediction = response.data.predictions[0];
-            const base64Data = prediction.bytesBase64Encoded || prediction;
+            const base64Data = prediction.bytesBase64Encoded || (typeof prediction === 'string' ? prediction : null);
 
-            if (base64Data && typeof base64Data === 'string') {
+            if (base64Data) {
+                console.log(`[CLOUD UPLOAD] Saving ${modelId} result...`);
                 const buffer = Buffer.from(base64Data, 'base64');
                 const cloudResult = await uploadToCloudinary(buffer, {
                     folder: 'generated_images',
-                    public_id: `img_${originalImage ? 'mod' : 'gen'}_${Date.now()}`
+                    public_id: `aisa_${originalImage ? 'edit' : 'gen'}_${Date.now()}`
                 });
-                logger.info(`[VERTEX IMAGE] Success: ${cloudResult.secure_url}`);
-                return cloudResult.secure_url;
+
+                if (cloudResult && cloudResult.secure_url) {
+                    console.log(`[IMAGE SUCCESS] URL: ${cloudResult.secure_url}`);
+                    return cloudResult.secure_url;
+                }
             }
         }
 
@@ -94,33 +112,39 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
 
     } catch (error) {
         const errorMsg = error.message || "Unknown error";
+        
+        if (originalImage) {
+            console.error(`[VERTEX IMAGE EDIT FAILED] Reason: ${errorMsg}. Cannot fallback to Pollinations for edits.`);
+            throw new Error(`Image modification failed: ${errorMsg}`);
+        }
+
         console.warn(`[VERTEX IMAGE FALLBACK] Reason: ${errorMsg}. Switching to Pollinations.`);
 
         // Robust Fallback to Pollinations with Flux model
-        // Flux is the best free model available on Pollinations currently
-        const safePrompt = encodeURIComponent(prompt.substring(0, 500)); // Safety limit
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
+        const safePrompt = encodeURIComponent(prompt.substring(0, 500));
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
 
-        // Optionally upload pollinations image to Cloudinary to make it permanent
-        // This is important because Pollinations links can be slow or expire
         try {
-            console.log(`[PROXY DOWNLOAD] Fetching from Pollinations: ${pollinationsUrl}`);
+            console.log(`[PROXY DOWNLOAD] Fetching from: ${pollinationsUrl}`);
             const resp = await axios.get(pollinationsUrl, {
                 responseType: 'arraybuffer',
-                timeout: 15000
+                timeout: 30000
             });
 
-            console.log(`[PROXY UPLOAD] Uploading to Cloudinary...`);
+            console.log(`[PROXY UPLOAD] Uploading Pollinations result to Cloudinary...`);
             const cloudResult = await uploadToCloudinary(Buffer.from(resp.data), {
                 folder: 'generated_images',
                 public_id: `poll_${Date.now()}`
             });
-            console.log(`[PROXY SUCCESS] URL: ${cloudResult.secure_url}`);
-            return cloudResult.secure_url;
+
+            if (cloudResult && cloudResult.secure_url) {
+                console.log(`[PROXY SUCCESS] URL: ${cloudResult.secure_url}`);
+                return cloudResult.secure_url;
+            }
+            return pollinationsUrl;
 
         } catch (e) {
-            console.error(`[PROXY FAILED] ${e.message}. Returning direct link.`);
-            // Fallback to direct link if upload fails
+            console.error(`[PROXY FAILED] ${e.message}. Returning direct Pollinations link.`);
             return pollinationsUrl;
         }
     }
@@ -186,16 +210,25 @@ export const editImage = async (req, res, next) => {
 
         let imageToProcess = imageBase64;
 
-        // If we only have a URL, we might need to fetch it and convert to base64 for Vertex 
-        // Or Vertex might accept the URL directly? StandardVertex often wants bytes.
-        if (imageUrl && !imageBase64) {
-            try {
-                const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-                imageToProcess = Buffer.from(response.data).toString('base64');
-            } catch (err) {
-                console.error("[Image Editing] Failed to fetch image from URL:", err.message);
-                throw new Error("Failed to process the source image URL.");
+        // If we only have a URL, check if it's a data URL or an external one
+        if (imageUrl && !imageToProcess) {
+            if (imageUrl.startsWith('data:')) {
+                console.log("[Image Editing] Processing data URL");
+                imageToProcess = imageUrl.split(',')[1];
+            } else {
+                try {
+                    console.log(`[Image Editing] Fetching external image: ${imageUrl}`);
+                    const response = await axios.get(imageUrl, { responseType: 'arraybuffer' });
+                    imageToProcess = Buffer.from(response.data).toString('base64');
+                } catch (err) {
+                    console.error("[Image Editing] Failed to fetch image from URL:", err.message);
+                    throw new Error(`Failed to process the source image URL: ${err.message}`);
+                }
             }
+        }
+
+        if (!imageToProcess) {
+            return res.status(400).json({ success: false, message: 'Valid image data (URL or Base64) is required' });
         }
 
         const modifiedImageUrl = await generateImageFromPrompt(prompt, imageToProcess);
