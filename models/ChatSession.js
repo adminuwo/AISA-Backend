@@ -9,7 +9,15 @@ const messageSchema = new mongoose.Schema({
     required: true
   },
   content: { type: String, required: true },
-  timestamp: { type: Number, default: Date.now },
+  timestamp: {
+    type: mongoose.Schema.Types.Mixed,
+    default: Date.now,
+    set: (v) => {
+      if (typeof v === 'string') return new Date(v).getTime() || Date.now();
+      if (v instanceof Date) return v.getTime();
+      return v;
+    }
+  },
   attachments: [{
     type: { type: String, enum: ['image', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] },
     url: String,

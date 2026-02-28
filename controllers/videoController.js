@@ -109,7 +109,6 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
     logger.info(`[VIDEO] Starting generation flow via Vertex AI (Standard ADC)...`);
 
     // 1. INITIALIZE VERTEX AI CLIENT (Standard ADC)
-    // We rely on the environment's ADC (User or Runtime SA) for generation permission
     const client = new GoogleGenAI({
       vertexai: true,
       project: projectId,
@@ -156,48 +155,71 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
       logDebug(`Generation complete. URI: ${videoUri}`);
       logger.info(`[VIDEO] Generation complete. GCS URI: ${videoUri}`);
 
-      // Extract path for signing
+      // GCS URI actual path (may be nested like uuid.mp4/number/sample_0.mp4)
       const bucketPrefix = `gs://${bucketName}/`;
       let finalFileName = fileName;
       if (videoUri.startsWith(bucketPrefix)) {
         finalFileName = videoUri.slice(bucketPrefix.length);
       }
 
-      logDebug(`Uploading video to Cloudinary: ${finalFileName}`);
-      logger.info(`[VIDEO] Uploading video to Cloudinary: ${finalFileName}`);
+      logDebug(`Processing video: ${finalFileName}`);
+      logger.info(`[VIDEO] Processing video: ${finalFileName}`);
 
-      // 7. DOWNLOAD FROM GCS using Storage SDK & UPLOAD TO CLOUDINARY
+      // 7. DELIVERY STRATEGY: Use GCS SDK (auto-ADC) to download → Cloudinary upload
+      // Strategy 1: GCS SDK createReadStream (uses ADC automatically, no manual token needed)
+      // Strategy 2: makePublic (if bucket-level IAM allows it)
       try {
-        logDebug(`Downloading video from GCS using Storage SDK...`);
-        logger.info(`[VIDEO] Downloading video from GCS using Storage SDK...`);
+        logDebug(`Attempting GCS SDK download via ADC...`);
+        logger.info(`[VIDEO] Attempting GCS SDK download (ADC) → Cloudinary upload...`);
 
-        // Initialize a fresh Storage client with explicit service account if available
-        const storageOptions = { projectId: projectId };
-        const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
-        if (credPath) {
-          storageOptions.keyFilename = credPath;
-        }
-        const gcsClient = new Storage(storageOptions);
+        const gcsClient = new Storage({ projectId: projectId });
+        const fileRef = gcsClient.bucket(bucketName).file(finalFileName);
 
-        const [videoBuffer] = await gcsClient.bucket(bucketName).file(finalFileName).download();
-        logDebug(`GCS download complete. Size: ${videoBuffer.length} bytes`);
-        logger.info(`[VIDEO] GCS download complete. Size: ${videoBuffer.length} bytes`);
+        // Download to memory buffer using SDK (internally uses ADC OAuth token)
+        const [fileBuffer] = await fileRef.download({ timeout: 180000 });
 
-        logger.info(`[VIDEO] Uploading to Cloudinary...`);
-        const cloudResult = await uploadToCloudinary(videoBuffer, {
+        logDebug(`GCS SDK download success (${fileBuffer.byteLength} bytes). Uploading to Cloudinary...`);
+        logger.info(`[VIDEO] Downloaded ${fileBuffer.byteLength} bytes. Uploading to Cloudinary...`);
+
+        const cloudResult = await uploadToCloudinary(fileBuffer, {
           folder: 'generated_videos',
           resource_type: 'video',
-          public_id: `aisa_vid_${Date.now()}`
+          public_id: `aisa_vid_${Date.now()}`,
         });
 
         const url = cloudResult.secure_url;
         logDebug(`Success! Cloudinary URL: ${url}`);
-        logger.info(`[VIDEO] Success! Cloudinary URL: ${url}`);
+        logger.info(`[VIDEO] Successfully uploaded to Cloudinary: ${url}`);
         return url;
-      } catch (uploadError) {
-        logDebug(`Upload/Download failed: ${uploadError.message}`);
-        logger.error(`[VIDEO] Upload/Download failed: ${uploadError.message}`);
-        throw new Error(`Failed to process and upload video: ${uploadError.message}`);
+
+      } catch (downloadError) {
+        logDebug(`GCS SDK download failed: ${downloadError.message} — trying makePublic fallback...`);
+        logger.warn(`[VIDEO] GCS SDK download failed: ${downloadError.message}`);
+
+        // Fallback: makePublic → return direct public GCS URL (no download needed)
+        try {
+          const gcsClient = new Storage({ projectId: projectId });
+          const fileRef = gcsClient.bucket(bucketName).file(finalFileName);
+
+          logDebug(`Attempting makePublic()...`);
+          logger.info(`[VIDEO] Attempting makePublic() on GCS file...`);
+          await fileRef.makePublic();
+
+          const publicUrl = `https://storage.googleapis.com/${bucketName}/${encodeURIComponent(finalFileName)}`;
+          logDebug(`makePublic success! Public URL: ${publicUrl}`);
+          logger.info(`[VIDEO] makePublic success! URL: ${publicUrl}`);
+          return publicUrl;
+
+        } catch (makePublicError) {
+          logDebug(`makePublic also failed: ${makePublicError.message}`);
+          logger.error(`[VIDEO] makePublic also failed: ${makePublicError.message}`);
+          throw new Error(
+            `Video generated on GCS (${videoUri}) but could not be delivered. ` +
+            `Fix: Go to Google Cloud Console → bucket 'aisageneratedvideo' → Permissions → ` +
+            `Add 'allUsers' with role 'Storage Object Viewer' to make videos public. ` +
+            `Or grant 'storage.objects.get' to gauhar@uwo24.com.`
+          );
+        }
       }
 
     } else {
@@ -209,7 +231,6 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
   } catch (error) {
     logger.error(`[VERTEX VIDEO ERROR] ${error.message}`);
     try { fs.appendFileSync('debug_video.log', `${new Date().toISOString()} - ERROR: ${error.message}\n`); } catch (e) { }
-    // DO NOT throw error here, return null so the main function can use fallback
     return null;
   }
 };

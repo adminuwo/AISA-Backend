@@ -127,7 +127,7 @@ const userSchema = new mongoose.Schema({
     },
     plan: {
         type: String,
-        enum: ['basic', 'pro', 'king'],
+        enum: ['basic', 'pro', 'king', 'Basic', 'Pro', 'King', 'Free', 'free', 'Starter', 'starter', 'Premium', 'premium'],
         default: 'basic'
     },
     planStartDate: {
