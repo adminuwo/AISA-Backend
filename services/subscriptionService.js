@@ -26,7 +26,7 @@ class SubscriptionService {
         const plan = (user.plan || 'basic').toLowerCase();
         const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
         const usageKey = getUsageKey(feature);
-        
+
         const currentCount = usage[usageKey] || 0;
         const limit = limits[usageKey];
 
@@ -56,7 +56,7 @@ class SubscriptionService {
      * Get user usage and plan info for dashboard
      */
     async getUsageStatus(userId) {
-        const user = await User.findById(userId).select('plan planStartDate planEndDate isActive');
+        const user = await User.findById(userId).select('plan planStartDate planEndDate isActive isExpired');
         if (!user) throw new Error("User not found");
 
         const currentMonth = new Date().toISOString().slice(0, 7);
@@ -65,14 +65,24 @@ class SubscriptionService {
             usage = await MonthlyUsage.create({ userId, month: currentMonth });
         }
 
-        const plan = (user.plan || 'basic').toLowerCase();
-        const planLimits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
+        // Normalise plan name: always lowercase basic/pro/king
+        let plan = (user.plan || 'basic').toLowerCase();
+        if (plan === 'free' || plan === 'starter') plan = 'basic';
+        const rawLimits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
+
+        // CRITICAL: JSON cannot serialise Infinity.
+        // We convert Infinity → -1 (means "unlimited" on the frontend)
+        const planLimits = {};
+        for (const [key, val] of Object.entries(rawLimits)) {
+            planLimits[key] = val === Infinity ? -1 : val;
+        }
 
         return {
-            plan: user.plan,
+            plan,
             planStartDate: user.planStartDate,
             planEndDate: user.planEndDate,
             isActive: user.isActive,
+            isExpired: user.isExpired || false,
             usage,
             planLimits
         };
