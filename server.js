@@ -32,6 +32,8 @@ import videoRoutes from './routes/videoRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import memoryRoutes from './routes/memoryRoutes.js';
+import { startPlanExpiryService } from './services/planExpiryService.js';
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
 
 // End of standard imports
 
@@ -48,6 +50,9 @@ connectDB().then(async () => {
     const { initializeFromDB } = await import('./services/ai.service.js');
     await initializeFromDB();
     console.log("✅ AI Services (Embeddings & Vector Store) pre-initialized.");
+    // Start daily plan expiry + warning-email service
+    startPlanExpiryService();
+    console.log('✅ Plan Expiry Service started.');
   } catch (err) {
     console.error("❌ Failed to pre-initialize AI services:", err.message);
   }
@@ -111,6 +116,7 @@ app.use('/api/memory', memoryRoutes);
 
 // Business & Dashboard
 app.use('/api/payment', paymentRoutes);
+app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api', dashboardRoutes);
 

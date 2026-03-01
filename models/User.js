@@ -127,7 +127,7 @@ const userSchema = new mongoose.Schema({
     },
     plan: {
         type: String,
-        enum: ['basic', 'pro', 'king', 'Basic', 'Pro', 'King', 'Free', 'free', 'Starter', 'starter', 'Premium', 'premium'],
+        enum: ['basic', 'pro', 'king'],
         default: 'basic'
     },
     planStartDate: {
@@ -135,7 +135,16 @@ const userSchema = new mongoose.Schema({
         default: Date.now
     },
     planEndDate: {
-        type: Date
+        type: Date,
+        default: null
+    },
+    isExpired: {
+        type: Boolean,
+        default: false
+    },
+    planExpiredAt: {
+        type: Date,
+        default: null
     },
     isActive: {
         type: Boolean,

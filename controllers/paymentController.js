@@ -4,6 +4,7 @@ import User from '../models/User.js';
 import Transaction from '../models/Transaction.js';
 import dotenv from 'dotenv';
 import mongoose from 'mongoose';
+import { normalisePlan } from '../config/planLimits.js';
 
 dotenv.config();
 
@@ -111,31 +112,37 @@ export const verifyPayment = async (req, res) => {
         const isAuthentic = expectedSignature === razorpay_signature;
 
         if (isAuthentic) {
-            let enumCorrectPlan = 'basic'; // Enforcing lowercase based on User Schema
+            let enumCorrectPlan = 'basic';
             const lowerPlan = plan.trim().toLowerCase();
             let durationDays = 30; // Default monthly
 
             if (lowerPlan.includes('king') || lowerPlan === 'yearly') {
                 enumCorrectPlan = 'king';
                 if (lowerPlan.includes('yearly') || lowerPlan === 'king_yearly') {
-                    durationDays = 425; // 365 Days + 60 Days (2 months free)
+                    durationDays = 425; // 365 + 60 bonus days
                 }
             } else if (lowerPlan.includes('pro')) {
                 enumCorrectPlan = 'pro';
                 if (lowerPlan.includes('yearly')) {
-                    durationDays = 365 + 60; // For future proofing
+                    durationDays = 425;
                 }
             }
 
-            const endDate = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000);
+            // Always normalise (basic/pro/king)
+            enumCorrectPlan = normalisePlan(enumCorrectPlan);
 
-            // Update User Plan
+            const startDate = new Date();
+            const endDate = new Date(startDate.getTime() + durationDays * 24 * 60 * 60 * 1000);
+
+            // Update User Plan — also clear any previous expiry flags
             const updatedUser = await User.findByIdAndUpdate(
                 userId,
                 {
                     plan: enumCorrectPlan,
-                    planStartDate: new Date(),
+                    planStartDate: startDate,
                     planEndDate: endDate,
+                    isExpired: false,        // Clear previous expiry
+                    planExpiredAt: null,
                     'personalizations.account.subscriptionPlan': enumCorrectPlan,
                     subscription: {
                         status: 'active',

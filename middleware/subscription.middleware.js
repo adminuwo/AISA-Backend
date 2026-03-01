@@ -1,29 +1,110 @@
+/**
+ * ════════════════════════════════════════════════════════
+ *  SECURE SUBSCRIPTION MIDDLEWARE
+ *  All plan logic is enforced SERVER-SIDE only.
+ *  Frontend cannot override limits.
+ *  Usage is counted per EMAIL (not per device).
+ * ════════════════════════════════════════════════════════
+ */
+
 import MonthlyUsage from '../models/MonthlyUsage.js';
 import User from '../models/User.js';
-import { PLAN_LIMITS, getUsageKey } from '../config/planLimits.js';
+import { PLAN_LIMITS, getUsageKey, normalisePlan } from '../config/planLimits.js';
 
-/**
- * Middleware to check if user has reached their subscription plan limit
- * Usage: checkLimit('image')
- */
+// ─────────────────────────────────────────────────────────
+//  HELPER: Check & handle plan expiry
+//  Returns the final normalised plan string (may downgrade)
+// ─────────────────────────────────────────────────────────
+const handlePlanExpiry = async (user) => {
+    const plan = normalisePlan(user.plan);
+
+    if (plan !== 'basic' && user.planEndDate) {
+        const now = new Date();
+        if (now > new Date(user.planEndDate)) {
+            // ── Plan has expired → downgrade to basic ──
+            user.plan = 'basic';
+            user.isExpired = true;
+            user.planExpiredAt = now;
+            await user.save();
+            return { plan: 'basic', expired: true };
+        }
+    }
+
+    return { plan, expired: false };
+};
+
+// ─────────────────────────────────────────────────────────
+//  MAIN MIDDLEWARE FACTORY
+//  Usage: checkSubscriptionLimit('image')
+// ─────────────────────────────────────────────────────────
 export const checkSubscriptionLimit = (feature) => {
     return async (req, res, next) => {
         try {
-            const userId = req.user.id; // Assumes auth middleware has already run
-            const user = await User.findById(userId);
+            // ── 1. Identity comes ONLY from the verified JWT ──
+            const userId = req.user?.id || req.user?._id;
+            const jwtEmail = req.user?.email;
+
+            if (!userId || !jwtEmail) {
+                return res.status(401).json({
+                    success: false,
+                    code: 'UNAUTHORIZED',
+                    message: 'Authentication required'
+                });
+            }
+
+            // ── 2. Always fetch fresh user data from DB ──
+            //    Never trust frontend-sent plan / usage values
+            const user = await User.findById(userId).select(
+                'email plan planEndDate planStartDate isExpired isBlocked isActive'
+            );
 
             if (!user) {
-                return res.status(404).json({ success: false, message: "User not found" });
+                return res.status(404).json({ success: false, message: 'User not found' });
             }
 
-            // 1. Check if plan is expired
-            if (user.plan !== 'basic' && user.planEndDate && new Date() > user.planEndDate) {
-                user.plan = 'basic';
-                user.isActive = true; // Still active but basic
-                await user.save();
+            // ── 3. Security: email in token must match DB record ──
+            if (user.email.toLowerCase() !== jwtEmail.toLowerCase()) {
+                console.error(`[SECURITY] Token email mismatch! Token: ${jwtEmail}, DB: ${user.email}`);
+                return res.status(403).json({
+                    success: false,
+                    code: 'TOKEN_EMAIL_MISMATCH',
+                    message: 'Security violation detected'
+                });
             }
 
-            // 2. Get/Create current month usage
+            // ── 4. Check if account is blocked ──
+            if (user.isBlocked) {
+                return res.status(403).json({
+                    success: false,
+                    code: 'ACCOUNT_BLOCKED',
+                    message: 'Your account has been suspended. Please contact support.'
+                });
+            }
+
+            // ── 5. Handle plan expiry (auto-downgrade to basic) ──
+            const { plan, expired } = await handlePlanExpiry(user);
+
+            if (expired) {
+                return res.status(403).json({
+                    success: false,
+                    code: 'PLAN_EXPIRED',
+                    message: 'Your plan has expired. You have been moved to the Basic plan.',
+                    currentPlan: 'basic'
+                });
+            }
+
+            // ── 6. Resolve limits for this plan ──
+            const limits = PLAN_LIMITS[plan] || PLAN_LIMITS['basic'];
+            const usageKey = getUsageKey(feature);
+            const limit = limits[usageKey];
+
+            // ── 7. If unlimited — skip counting, just proceed ──
+            if (limit === Infinity) {
+                req.subscriptionMeta = { userId, userEmail: user.email, plan, usageKey, unlimited: true };
+                return next();
+            }
+
+            // ── 8. Fetch/create this month's usage record (keyed by userId, NOT device) ──
             const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
             let usage = await MonthlyUsage.findOne({ userId, month: currentMonth });
 
@@ -31,50 +112,84 @@ export const checkSubscriptionLimit = (feature) => {
                 usage = await MonthlyUsage.create({ userId, month: currentMonth });
             }
 
-            // 3. Compare current usage with limits
-            let planRaw = (user.plan || 'basic').toLowerCase();
-            // Handle plan names that might be "free" instead of "basic"
-            if (planRaw === 'free') planRaw = 'basic';
-            
-            const limits = PLAN_LIMITS[planRaw] || PLAN_LIMITS['basic'];
-            const usageKey = getUsageKey(feature);
-            
             const currentCount = usage[usageKey] || 0;
-            const limit = limits[usageKey];
 
-            if (limit !== Infinity && currentCount >= limit) {
+            // ── 9. Enforce the limit ──
+            if (currentCount >= limit) {
                 return res.status(403).json({
                     success: false,
-                    code: "PLAN_LIMIT_REACHED",
-                    message: `Monthly ${feature} limit exceeded for your ${planRaw} plan. Please upgrade to continue.`,
+                    code: 'PLAN_LIMIT_REACHED',
+                    message: `You've used all ${limit} ${feature}s on your ${plan} plan this month.`,
+                    feature,
+                    currentPlan: plan,
                     currentUsage: currentCount,
-                    limit: limit
+                    limit,
+                    upgradeRequired: true
                 });
             }
 
-            // Attach usage object to req so we can increment it after success
-            req.monthlyUsage = usage;
-            req.usageKey = usageKey;
-            
+            // ── 10. Attach meta — usage is incremented AFTER success ──
+            req.subscriptionMeta = {
+                userId,
+                userEmail: user.email,
+                plan,
+                usageKey,
+                usage,        // MonthlyUsage document
+                unlimited: false
+            };
+
             next();
+
         } catch (error) {
-            console.error("Subscription check error in feature:", feature);
-            console.error("User ID:", req.user?.id || req.user?._id || "Unknown");
-            console.error(error.stack || error);
-            res.status(500).json({ success: false, message: "Internal server error during limit check" });
+            console.error(`[SUBSCRIPTION] checkSubscriptionLimit error for feature "${feature}":`, error.message);
+            res.status(500).json({ success: false, message: 'Internal server error during subscription check' });
         }
     };
 };
 
-/**
- * Utility to increment usage after successful tool execution
- */
-export const incrementUsage = async (usageRecord, key) => {
+// ─────────────────────────────────────────────────────────
+//  INCREMENT USAGE  (call after the feature executes OK)
+//  Place at end of your controller: await incrementUsage(req)
+// ─────────────────────────────────────────────────────────
+export const incrementUsage = async (req) => {
     try {
-        if (!usageRecord || !key) return;
-        usageRecord[key] += 1;
-        await usageRecord.save();
+        const meta = req.subscriptionMeta;
+        if (!meta || meta.unlimited) return; // Unlimited plans — nothing to track
+
+        const { usage, usageKey } = meta;
+        if (!usage || !usageKey) return;
+
+        usage[usageKey] = (usage[usageKey] || 0) + 1;
+        await usage.save();
+
     } catch (error) {
-        console.error("Error incrementing usage:", error);
+        // Non-blocking: log but don't crash the response
+        console.error('[SUBSCRIPTION] incrementUsage error:', error.message);
     }
 };
+
+// ─────────────────────────────────────────────────────────
+//  EXPIRY GUARD  (standalone middleware — no feature check)
+//  Use on any route that needs a valid non-expired plan
+// ─────────────────────────────────────────────────────────
+export const requireActivePlan = async (req, res, next) => {
+    try {
+        const userId = req.user?.id || req.user?._id;
+        if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+
+        const user = await User.findById(userId).select('plan planEndDate isExpired isBlocked');
+        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+        if (user.isBlocked) return res.status(403).json({ success: false, code: 'ACCOUNT_BLOCKED', message: 'Account suspended' });
+
+        const { plan, expired } = await handlePlanExpiry(user);
+        req.userPlan = plan;
+        req.planExpired = expired;
+
+        next();
+    } catch (err) {
+        console.error('[SUBSCRIPTION] requireActivePlan error:', err.message);
+        res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+};
+
+export { handlePlanExpiry };

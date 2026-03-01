@@ -8,6 +8,7 @@ import { sendVerificationEmail, sendResetPasswordEmail, sendPasswordChangeSucces
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { normalisePlan } from "../config/planLimits.js";
 
 import { OAuth2Client } from "google-auth-library";
 
@@ -94,8 +95,8 @@ router.post("/signup", async (req, res) => {
       ]
     });
 
-    // Generate token cookie
-    const token = generateTokenAndSetCookies(res, newUser._id, newUser.email, newUser.name);
+    // Generate token cookie (planType embedded for info only — middleware re-checks DB)
+    const token = generateTokenAndSetCookies(res, newUser._id, newUser.email, newUser.name, newUser.plan);
 
 
     // Send OTP email
@@ -147,8 +148,12 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Incorrect password" });
     }
 
+    // Normalise plan to lowercase before touching DB
+    const userPlan = normalisePlan(user.plan);
+    if (user.plan !== userPlan) { user.plan = userPlan; } // sync if old data
+
     // Generate token
-    const token = generateTokenAndSetCookies(res, user._id, user.email, user.name);
+    const token = generateTokenAndSetCookies(res, user._id, user.email, user.name, userPlan);
 
     // Add welcome notifications if inbox is empty
     if (!user.notificationsInbox || user.notificationsInbox.length === 0) {
@@ -271,7 +276,8 @@ router.post("/google", async (req, res) => {
     }
 
     // 2. Generate token
-    const token = generateTokenAndSetCookies(res, user._id, user.email, user.name);
+    const userPlan = normalisePlan(user.plan);
+    const token = generateTokenAndSetCookies(res, user._id, user.email, user.name, userPlan);
 
     res.status(200).json({
       id: user._id,
