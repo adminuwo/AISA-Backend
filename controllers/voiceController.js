@@ -158,9 +158,11 @@ export const synthesizeFile = async (req, res) => {
 
     try {
         const { fileData, mimeType, languageCode: reqLangCode = 'en-US', gender = 'FEMALE', introText } = req.body;
+        const debugInfo = `[${new Date().toISOString()}] body: fileData? ${!!fileData}, mimeType: ${mimeType}, introText? ${!!introText}\n`;
+        fs.appendFileSync(path.join(__dirname, '../voice_debug.log'), debugInfo);
 
-        if ((!fileData || !mimeType) && !introText) {
-            console.error("❌ [VoiceController] Missing required fields");
+        if (!fileData && !introText) {
+            fs.appendFileSync(path.join(__dirname, '../voice_debug.log'), "❌ Missing required fields\n");
             return res.status(400).json({ error: 'Either fileData or introText is required' });
         }
 
@@ -174,6 +176,13 @@ export const synthesizeFile = async (req, res) => {
                 if (mimeType === 'application/pdf') {
                     const data = await pdfParse(buffer);
                     textToRead = data.text;
+
+                    // Fallback to OCR if PDF is empty (scanned image)
+                    if (!textToRead || textToRead.trim().length < 5) {
+                        console.log("🔍 [VoiceController] PDF text empty or too short, falling back to OCR (Tesseract)...");
+                        const { data: { text: ocrText } } = await Tesseract.recognize(buffer, 'eng+hin');
+                        textToRead = ocrText;
+                    }
                 } else if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.endsWith('.docx') || mimeType.endsWith('.doc')) {
                     try {
                         textToRead = await officeParser.parseOfficeAsync(buffer);
@@ -210,7 +219,12 @@ export const synthesizeFile = async (req, res) => {
             .trim();
 
         if (!textToRead || textToRead.length < 2) {
-            return res.status(400).json({ error: 'Could not extract enough readable text from this file.' });
+            const extractErr = `❌ No text extracted! length: ${textToRead?.length}, MIME: ${mimeType}\n`;
+            fs.appendFileSync(path.join(__dirname, '../voice_debug.log'), extractErr);
+            return res.status(400).json({
+                error: 'Could not extract enough readable text from this file.',
+                details: `Extracted length: ${textToRead?.length || 0}. MIME type: ${mimeType || 'unknown'}`
+            });
         }
 
         // Auto-detect Language

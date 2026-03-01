@@ -5,7 +5,7 @@ const messageSchema = new mongoose.Schema({
   id: String,
   role: {
     type: String,
-    enum: ['user', 'model'],
+    enum: ['user', 'model', 'assistant'],
     required: true
   },
   content: { type: String, required: true },
@@ -19,12 +19,24 @@ const messageSchema = new mongoose.Schema({
     }
   },
   attachments: [{
-    type: { type: String, enum: ['image', 'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'] },
+    type: { type: String }, // Flexible type
     url: String,
     name: String
   }],
   imageUrl: String,
-  videoUrl: String
+  videoUrl: String,
+  conversion: {
+    file: String, // base64
+    blobUrl: String, // temporary url
+    fileName: String,
+    mimeType: String,
+    fileSize: String,
+    rawSize: Number,
+    charCount: Number
+  },
+  isProcessing: Boolean,
+  agentName: String,
+  agentCategory: String
 });
 
 const chatSessionSchema = new mongoose.Schema({
