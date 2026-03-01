@@ -8,17 +8,18 @@ import { v4 as uuidv4 } from 'uuid';
 import fs from 'fs';
 
 // Initialize Google Cloud Storage
-// Ensure this doesn't crash if credentials are missing during startup
+// In production (App Engine), uses the App Engine default service account (ADC) automatically.
+// Locally, uses gcloud auth application-default login credentials.
 let storage;
 try {
   const storageOptions = { projectId: process.env.GCP_PROJECT_ID };
-  // Use service account key file if available (takes priority over ADC user account)
+  // Use service account key file if available (local dev or explicit config)
   const credPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
   if (credPath) {
     storageOptions.keyFilename = credPath;
   }
   storage = new Storage(storageOptions);
-  logger.info('[GCS] Storage initialized' + (credPath ? ' with service account key' : ' with ADC'));
+  logger.info('[GCS] Storage initialized' + (credPath ? ` with key file: ${credPath}` : ' with ADC (App Engine service account in prod)'));
 } catch (err) {
   logger.warn(`[GCS] Failed to initialize Google Cloud Storage: ${err.message}`);
 }
@@ -165,15 +166,15 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
       logDebug(`Processing video: ${finalFileName}`);
       logger.info(`[VIDEO] Processing video: ${finalFileName}`);
 
-      // 7. DELIVERY STRATEGY: Use GCS SDK (auto-ADC) to download → Cloudinary upload
-      // Strategy 1: GCS SDK createReadStream (uses ADC automatically, no manual token needed)
-      // Strategy 2: makePublic (if bucket-level IAM allows it)
+      // 7. DELIVERY STRATEGY: Use shared GCS SDK client (ADC) to download → Cloudinary upload
+      // In production (App Engine), ADC = App Engine default service account auto-auth
+      // In local dev, ADC = gcloud auth application-default login
       try {
-        logDebug(`Attempting GCS SDK download via ADC...`);
-        logger.info(`[VIDEO] Attempting GCS SDK download (ADC) → Cloudinary upload...`);
+        logDebug(`Attempting GCS SDK download via ADC (project: ${projectId})...`);
+        logger.info(`[VIDEO] Attempting GCS SDK download → Cloudinary upload... (ENV: ${process.env.NODE_ENV || 'development'})`);
 
-        const gcsClient = new Storage({ projectId: projectId });
-        const fileRef = gcsClient.bucket(bucketName).file(finalFileName);
+        // Reuse module-level storage client (already initialized with correct credentials)
+        const fileRef = storage.bucket(bucketName).file(finalFileName);
 
         // Download to memory buffer using SDK (internally uses ADC OAuth token)
         const [fileBuffer] = await fileRef.download({ timeout: 180000 });
@@ -193,13 +194,13 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
         return url;
 
       } catch (downloadError) {
-        logDebug(`GCS SDK download failed: ${downloadError.message} — trying makePublic fallback...`);
-        logger.warn(`[VIDEO] GCS SDK download failed: ${downloadError.message}`);
+        logDebug(`GCS SDK download failed: ${downloadError.message} (code: ${downloadError.code}) — trying makePublic fallback...`);
+        logger.warn(`[VIDEO] GCS SDK download failed [${downloadError.code}]: ${downloadError.message}`);
+        logger.warn(`[VIDEO] HINT: In production, grant 'Storage Object Admin' role to App Engine service account: ${projectId}@appspot.gserviceaccount.com on bucket '${bucketName}'`);
 
         // Fallback: makePublic → return direct public GCS URL (no download needed)
         try {
-          const gcsClient = new Storage({ projectId: projectId });
-          const fileRef = gcsClient.bucket(bucketName).file(finalFileName);
+          const fileRef = storage.bucket(bucketName).file(finalFileName);
 
           logDebug(`Attempting makePublic()...`);
           logger.info(`[VIDEO] Attempting makePublic() on GCS file...`);
@@ -214,10 +215,9 @@ export const generateVideoFromPrompt = async (prompt, duration, quality, aspectR
           logDebug(`makePublic also failed: ${makePublicError.message}`);
           logger.error(`[VIDEO] makePublic also failed: ${makePublicError.message}`);
           throw new Error(
-            `Video generated on GCS (${videoUri}) but could not be delivered. ` +
-            `Fix: Go to Google Cloud Console → bucket 'aisageneratedvideo' → Permissions → ` +
-            `Add 'allUsers' with role 'Storage Object Viewer' to make videos public. ` +
-            `Or grant 'storage.objects.get' to gauhar@uwo24.com.`
+            `[PRODUCTION FIX NEEDED] Video was generated on GCS (${videoUri}) but delivery failed. ` +
+            `Grant 'Storage Object Admin' role to service account '${projectId}@appspot.gserviceaccount.com' ` +
+            `on bucket '${bucketName}' in Google Cloud Console → IAM & Admin.`
           );
         }
       }

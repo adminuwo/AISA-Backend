@@ -1,5 +1,5 @@
 runtime: nodejs20
-instance_class: F1
+instance_class: F2
 automatic_scaling:
   target_cpu_utilization: 0.65
   min_instances: 0
@@ -7,15 +7,20 @@ automatic_scaling:
 
 env_variables:
   NODE_ENV: 'production'
-  # The PORT environment variable is automatically set by App Engine to 8080,
-  # but defining it here explicitly can be helpful for local testing with dev_appserver.py.
   PORT: '8080'
-  
-  # -------------------------------------------------------------
-  # IMPORTANT: Update these values before deploying!
-  # Or use Secret Manager for sensitive keys
-  # -------------------------------------------------------------
+
+  # --- App Config (non-sensitive) ---
+  APP_NAME: 'AI-MALL'
+  APP_DEFAULT_LANGUAGE: 'English'
+  TOKEN_EX: '7d'
+  RAZORPAY_MODE: 'live'
+
+  # --- Google Cloud (non-sensitive) ---
   GCP_PROJECT_ID: 'ai-mall-484810'
-  MONGODB_ATLAS_URI: 'mongodb+srv://adminuwo:[EMAIL_ADDRESS]/?appName=Cluster0'
-  RAZORPAY_KEY_ID: 'YOUR_RAZORPAY_KEY_ID'
-  RAZORPAY_KEY_SECRET: 'YOUR_RAZORPAY_SECRET'
+  VIDEO_SERVICE_ACCOUNT: 'video-signer@ai-mall-484810.iam.gserviceaccount.com'
+
+  # NOTE: All sensitive keys (OPENAI_API_KEY, CLOUDINARY_API_SECRET, JWT_SECRET,
+  # MONGODB_ATLAS_URI, RAZORPAY_KEY_SECRET, RESEND_API_KEY, GOOGLE_CLIENT_ID etc.)
+  # must be set directly in App Engine Console:
+  # GCP Console → App Engine → Versions → [your version] → Edit → Environment Variables
+  # OR use: gcloud app deploy --set-env-vars KEY=VALUE
