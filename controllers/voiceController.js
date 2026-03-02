@@ -38,20 +38,63 @@ try {
     }
 }
 
+// Helper to chunk text safely for Google TTS (5000 byte limit)
+const chunkText = (text, maxLength = 2500) => {
+    if (!text) return [];
+    const chunks = [];
+    let currentPos = 0;
+    while (currentPos < text.length) {
+        let end = currentPos + maxLength;
+        if (end < text.length) {
+            // Try to break at a space to avoid cutting words
+            const lastSpace = text.lastIndexOf(' ', end);
+            if (lastSpace > currentPos) {
+                end = lastSpace;
+            }
+        }
+        chunks.push(text.substring(currentPos, end).trim());
+        currentPos = end;
+    }
+    return chunks.filter(c => c.length > 0);
+};
+
+// Generic synthesizer that handles chunks
+const synthesizeChunks = async (chunks, languageCode, voiceName, gender, isNarrative = false) => {
+    const audioBuffers = [];
+    const BATCH_SIZE = 12;
+
+    for (let i = 0; i < chunks.length; i += BATCH_SIZE) {
+        const batch = chunks.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(chunk => {
+            const request = {
+                input: { text: chunk },
+                voice: { languageCode, name: voiceName, ssmlGender: gender },
+                audioConfig: {
+                    audioEncoding: 'MP3',
+                    speakingRate: isNarrative ? 0.92 : 1.0,
+                    pitch: 0.0,
+                    volumeGainDb: 1.5
+                },
+            };
+            return client.synthesizeSpeech(request).then(([response]) => {
+                let data = response.audioContent;
+                return Buffer.isBuffer(data) ? data : Buffer.from(data, 'base64');
+            });
+        });
+
+        const results = await Promise.all(batchPromises);
+        audioBuffers.push(...results);
+    }
+    return Buffer.concat(audioBuffers);
+};
+
 export const synthesizeSpeech = async (req, res) => {
     if (!client) {
-        return res.status(403).json({
-            error: 'Google Cloud TTS not configured',
-            details: 'Service account key missing on server.'
-        });
+        return res.status(403).json({ error: 'Google Cloud TTS not configured' });
     }
     try {
         const { text, languageCode = 'en-US', gender = 'FEMALE', tone } = req.body;
-
-        if (!text) {
-            console.error("❌ [VoiceController] No text provided!");
-            return res.status(400).json({ error: 'Text is required' });
-        }
+        if (!text) return res.status(400).json({ error: 'Text is required' });
 
         // Pre-processing for natural pronunciation
         let processedText = text
@@ -63,262 +106,107 @@ export const synthesizeSpeech = async (req, res) => {
             .replace(/\s+/g, " ")
             .trim();
 
-
-        // Preferred voices map structure: [Language][Gender]
         const voiceMap = {
-            'hi-IN': {
-                'FEMALE': 'hi-IN-Neural2-A',
-                'MALE': 'hi-IN-Neural2-B'
-            },
-            'en-US': {
-                'FEMALE': 'en-US-Journey-F',
-                'MALE': 'en-US-Journey-D'
-            },
-            'en-IN': {
-                'FEMALE': 'en-IN-Neural2-A',
-                'MALE': 'en-IN-Neural2-B'
-            }
+            'hi-IN': { 'FEMALE': 'hi-IN-Neural2-A', 'MALE': 'hi-IN-Neural2-B' },
+            'en-US': { 'FEMALE': 'en-US-Journey-F', 'MALE': 'en-US-Journey-D' },
+            'en-IN': { 'FEMALE': 'en-IN-Neural2-A', 'MALE': 'en-IN-Neural2-B' }
         };
 
-        // Fallback logic
-        let voiceName = `${languageCode}-Neural2-A`;
-        if (voiceMap[languageCode] && voiceMap[languageCode][gender]) {
-            voiceName = voiceMap[languageCode][gender];
-        } else {
-            const suffix = gender === 'MALE' ? 'B' : 'A';
-            voiceName = `${languageCode}-Neural2-${suffix === 'B' ? 'D' : 'A'}`;
+        let voiceName = voiceMap[languageCode]?.[gender] || `${languageCode}-Neural2-${gender === 'MALE' ? 'D' : 'A'}`;
+        const isNarrative = tone === 'narrative' || (tone !== 'conversational' && processedText.length > 600);
+
+        const chunks = chunkText(processedText, 2500);
+        console.log(`📤 [VoiceController] Synthesizing ${chunks.length} chunks... narrative=${isNarrative}`);
+
+        const audioData = await synthesizeChunks(chunks, languageCode, voiceName, gender, isNarrative);
+
+        // Increment usage
+        if (req.subscriptionMeta?.usage && req.subscriptionMeta?.usageKey) {
+            try {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(req.subscriptionMeta.usage, req.subscriptionMeta.usageKey);
+            } catch (e) { }
         }
 
-        // Determine tone
-        const isNarrative = tone === 'narrative' || (tone !== 'conversational' && text.length > 500);
-
-        const audioConfig = {
-            audioEncoding: 'MP3',
-            speakingRate: isNarrative ? 0.95 : 1.0,
-            pitch: 0.0,
-            volumeGainDb: 1.0
-        };
-        const request = {
-            input: { text: processedText },
-            voice: {
-                languageCode: languageCode,
-                name: voiceName,
-                ssmlGender: gender
-            },
-            audioConfig: audioConfig,
-        };
-
-
-        // Perform the text-to-speech request
-        console.log("📤 [VoiceController] Calling Google TTS API...");
-        const [response] = await client.synthesizeSpeech(request);
-
-        let audioData = response.audioContent;
-        if (!Buffer.isBuffer(audioData)) {
-
-            audioData = Buffer.from(audioData, 'base64');
-        }
-
-        console.log("✅ [VoiceController] TTS successful, audio size:", audioData.length);
-
-        // Increment usage if successful
-        if (req.subscriptionMeta) {
-            const { usage, usageKey } = req.subscriptionMeta;
-            if (usage && usageKey) {
-                try {
-                    const { default: subscriptionService } = await import('../services/subscriptionService.js');
-                    await subscriptionService.incrementUsage(usage, usageKey);
-                } catch (subErr) {
-                    console.error("⚠️ [VoiceController] Usage increment failed (non-blocking):", subErr.message);
-                }
-            }
-        }
-
-        // Return the audio content
-        res.set({
-            'Content-Type': 'audio/mpeg',
-            'Content-Length': audioData.length,
-        });
-
+        res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': audioData.length });
         res.send(audioData);
-
     } catch (error) {
-        console.error('❌ [VoiceController] ERROR:', error);
-        console.error('❌ [VoiceController] Error details:', {
-            message: error.message,
-            code: error.code,
-            details: error.details,
-            stack: error.stack
-        });
+        console.error('❌ [VoiceController] ERROR:', error.message);
         res.status(500).json({ error: 'Failed to synthesize speech', details: error.message });
     }
 };
 
 export const synthesizeFile = async (req, res) => {
-    console.log("📢 [VoiceController] File Synthesis Request Received!");
-    if (!client) {
-        return res.status(403).json({
-            error: 'Google Cloud TTS not configured',
-            details: 'Service account key missing on server.'
-        });
-    }
+    if (!client) return res.status(403).json({ error: 'Google Cloud TTS not configured' });
 
     try {
         const { fileData, mimeType, languageCode: reqLangCode = 'en-US', gender = 'FEMALE', introText } = req.body;
-
-        console.log(`[VoiceController] Request: fileData? ${!!fileData}, mimeType: ${mimeType}, introText? ${!!introText}`);
-
-        if (!fileData && !introText) {
-            console.error("❌ Missing required fields");
-            return res.status(400).json({ error: 'Either fileData or introText is required' });
-        }
+        if (!fileData && !introText) return res.status(400).json({ error: 'Input required' });
 
         let textToRead = "";
-
         if (fileData) {
             const buffer = Buffer.from(fileData, 'base64');
-            console.log(`📦 [VoiceController] Processing ${buffer.length} bytes, MIME: ${mimeType}`);
-
+            console.log(`📦 [SynthesizeFile] Processing ${buffer.length} bytes...`);
             try {
                 if (mimeType === 'application/pdf') {
                     const data = await pdfParse(buffer);
                     textToRead = data.text;
-
-                    // Fallback to OCR if PDF is empty (scanned image)
                     if (!textToRead || textToRead.trim().length < 5) {
-                        console.log("🔍 [VoiceController] PDF text empty or too short, falling back to OCR (Tesseract)...");
                         const { data: { text: ocrText } } = await Tesseract.recognize(buffer, 'eng+hin');
                         textToRead = ocrText;
                     }
-                } else if (mimeType.includes('word') || mimeType.includes('officedocument') || mimeType.endsWith('.docx') || mimeType.endsWith('.doc')) {
-                    try {
-                        textToRead = await officeParser.parseOfficeAsync(buffer);
-                    } catch (e) {
-                        const result = await mammoth.extractRawText({ buffer });
-                        textToRead = result.value;
-                    }
+                } else if (mimeType.includes('word') || mimeType.endsWith('.docx')) {
+                    try { textToRead = await officeParser.parseOfficeAsync(buffer); }
+                    catch { const res = await mammoth.extractRawText({ buffer }); textToRead = res.value; }
                 } else if (mimeType.startsWith('image/')) {
                     const { data: { text } } = await Tesseract.recognize(buffer, 'eng+hin');
                     textToRead = text;
                 } else if (mimeType.startsWith('text/')) {
                     textToRead = buffer.toString('utf-8');
-                } else {
-                    console.warn(`⚠️ [VoiceController] Unsupported MIME type: ${mimeType}`);
                 }
-            } catch (extractionError) {
-                console.error("❌ [VoiceController] Text extraction failed:", extractionError);
-                return res.status(500).json({ error: 'Text extraction failed', details: extractionError.message });
+            } catch (e) {
+                console.error("Extraction error:", e);
+                return res.status(500).json({ error: 'Text extraction failed', details: e.message });
             }
         }
 
-        if (introText && introText.trim().length > 0) {
-            textToRead = `${introText}\n\n${textToRead}`;
-        }
+        if (introText) textToRead = `${introText}\n\n${textToRead}`;
 
-        // Sanitize text
         textToRead = textToRead
             .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "")
             .replace(/™/g, " tm ")
-            .replace(/©/g, " ")
-            .replace(/[,\.?;"\\*\/+\-:@\[\]\(\)\|_]/g, " ")
             .replace(/\btm\b/gi, "tum")
             .replace(/\s+/g, " ")
             .trim();
 
-        if (!textToRead || textToRead.length < 2) {
-            console.error(`❌ No text extracted! length: ${textToRead?.length}, MIME: ${mimeType}`);
-            return res.status(400).json({
-                error: 'Could not extract enough readable text from this file.',
-                details: `Extracted length: ${textToRead?.length || 0}. MIME type: ${mimeType || 'unknown'}`
-            });
-        }
+        if (textToRead.length < 2) return res.status(400).json({ error: 'No readable text found' });
 
-        // Auto-detect Language
-        const hindiCharCount = (textToRead.match(/[\u0900-\u097F]/g) || []).length;
-        const totalCharCount = textToRead.length;
-        const isHindi = (hindiCharCount / totalCharCount) > 0.05 || hindiCharCount > 15;
+        const isHindi = (textToRead.match(/[\u0900-\u097F]/g) || []).length > 20;
+        const chunks = chunkText(textToRead, isHindi ? 1200 : 2500);
+        const langCode = isHindi ? 'hi-IN' : 'en-US';
+        const voiceName = isHindi ? 'hi-IN-Neural2-D' : (gender === 'MALE' ? 'en-US-Neural2-D' : 'en-US-Neural2-F');
 
-        // Chunking for long documents
-        const CHUNK_SIZE = isHindi ? 1400 : 4000;
-        const textChunks = [];
+        console.log(`📖 [VoiceController] File Synthesis: ${chunks.length} chunks, ${textToRead.length} chars`);
+        const audioData = await synthesizeChunks(chunks, langCode, voiceName, gender, true);
 
-        for (let i = 0; i < textToRead.length; i += CHUNK_SIZE) {
-            textChunks.push(textToRead.substring(i, i + CHUNK_SIZE));
-        }
-
-        let finalLanguageCode = isHindi ? 'hi-IN' : 'en-US';
-        let finalVoiceName = isHindi ? 'hi-IN-Neural2-D' : (gender === 'MALE' ? 'en-US-Neural2-D' : 'en-US-Neural2-F');
-
-        console.log(`📖 [VoiceController] Synthesis - Lang: ${finalLanguageCode}, Chars: ${textToRead.length}, Chunks: ${textChunks.length}`);
-
-        const audioBuffers = [];
-        const BATCH_SIZE = 15;
-
-        for (let i = 0; i < textChunks.length; i += BATCH_SIZE) {
-            const batch = textChunks.slice(i, i + BATCH_SIZE);
-            console.log(`📦 [VoiceController] Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(textChunks.length / BATCH_SIZE)}...`);
-
-            const batchPromises = batch.map((chunk, index) => {
-                const request = {
-                    input: { text: chunk },
-                    voice: { languageCode: finalLanguageCode, name: finalVoiceName, ssmlGender: gender },
-                    audioConfig: {
-                        audioEncoding: 'MP3',
-                        speakingRate: 0.95,
-                        pitch: 0.0,
-                        volumeGainDb: 2.0
-                    },
-                };
-                return client.synthesizeSpeech(request)
-                    .then(([response]) => {
-                        let chunkData = response.audioContent;
-                        if (!Buffer.isBuffer(chunkData)) {
-                            chunkData = Buffer.from(chunkData, 'base64');
-                        }
-                        return chunkData;
-                    })
-                    .catch(err => {
-                        console.error(`❌ [VoiceController] Chunk ${i + index} failed:`, err.message);
-                        throw err;
-                    });
-            });
-
-            const batchResults = await Promise.all(batchPromises);
-            audioBuffers.push(...batchResults);
-        }
-
-
-        const audioData = Buffer.concat(audioBuffers);
-        console.log(`✅ [VoiceController] Synthesis Complete. Total Audio Size: ${audioData.length} bytes`);
-
-        // Increment usage if successful
-        if (req.subscriptionMeta) {
-            const { usage, usageKey } = req.subscriptionMeta;
-            if (usage && usageKey) {
-                try {
-                    const { default: subscriptionService } = await import('../services/subscriptionService.js');
-                    await subscriptionService.incrementUsage(usage, usageKey);
-                } catch (subErr) {
-                    console.error("⚠️ [VoiceController] Usage increment failed (non-blocking):", subErr.message);
-                }
-            }
+        // Increment usage
+        if (req.subscriptionMeta?.usage && req.subscriptionMeta?.usageKey) {
+            try {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(req.subscriptionMeta.usage, req.subscriptionMeta.usageKey);
+            } catch (e) { }
         }
 
         res.set({
             'Content-Type': 'audio/mpeg',
             'Content-Length': audioData.length,
             'X-Text-Length': textToRead.length.toString(),
-            'X-Chunk-Count': textChunks.length.toString(),
+            'X-Chunk-Count': chunks.length.toString(),
             'Access-Control-Expose-Headers': 'X-Text-Length, X-Chunk-Count'
         });
         res.send(audioData);
-
     } catch (error) {
-        console.error('❌ [VoiceController] Critical Synthesis Failure:', error);
-        res.status(500).json({
-            error: 'Voice conversion failed',
-            details: error.message,
-            code: error.code
-        });
+        console.error('❌ [VoiceController] Critical Failure:', error.message);
+        res.status(500).json({ error: 'Voice conversion failed', details: error.message });
     }
 };
