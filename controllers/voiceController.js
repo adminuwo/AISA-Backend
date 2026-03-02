@@ -122,9 +122,12 @@ export const synthesizeSpeech = async (req, res) => {
         console.log("✅ [VoiceController] TTS successful, audio size:", audioData.length);
 
         // Increment usage if successful
-        if (req.monthlyUsage && req.usageKey) {
-            const { default: subscriptionService } = await import('../services/subscriptionService.js');
-            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        if (req.subscriptionMeta) {
+            const { usage, usageKey } = req.subscriptionMeta;
+            if (usage && usageKey) {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(usage, usageKey);
+            }
         }
 
         // Return the audio content
@@ -286,9 +289,12 @@ export const synthesizeFile = async (req, res) => {
         console.log(`✅ [VoiceController] Synthesis Complete. Total Audio Size: ${audioData.length} bytes`);
 
         // Increment usage if successful
-        if (req.monthlyUsage && req.usageKey) {
-            const { default: subscriptionService } = await import('../services/subscriptionService.js');
-            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        if (req.subscriptionMeta) {
+            const { usage, usageKey } = req.subscriptionMeta;
+            if (usage && usageKey) {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(usage, usageKey);
+            }
         }
 
         res.set({

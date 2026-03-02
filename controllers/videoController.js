@@ -68,9 +68,12 @@ export const generateVideo = async (req, res) => {
     logger.info(`[VIDEO] Video generated successfully: ${videoUrl}`);
 
     // Increment usage if successful
-    if (req.monthlyUsage && req.usageKey) {
-      const { default: subscriptionService } = await import('../services/subscriptionService.js');
-      await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+    if (req.subscriptionMeta) {
+      const { usage, usageKey } = req.subscriptionMeta;
+      if (usage && usageKey) {
+        const { default: subscriptionService } = await import('../services/subscriptionService.js');
+        await subscriptionService.incrementUsage(usage, usageKey);
+      }
     }
 
     return res.status(200).json({

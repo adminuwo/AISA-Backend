@@ -98,13 +98,7 @@ export const checkSubscriptionLimit = (feature) => {
             const usageKey = getUsageKey(feature);
             const limit = limits[usageKey];
 
-            // ── 7. If unlimited — skip counting, just proceed ──
-            if (limit === Infinity) {
-                req.subscriptionMeta = { userId, userEmail: user.email, plan, usageKey, unlimited: true };
-                return next();
-            }
-
-            // ── 8. Fetch/create this month's usage record (keyed by userId, NOT device) ──
+            // ── 7. Fetch/create this month's usage record (keyed by userId, NOT device) ──
             const currentMonth = new Date().toISOString().slice(0, 7); // "YYYY-MM"
             let usage = await MonthlyUsage.findOne({ userId, month: currentMonth });
 
@@ -114,8 +108,8 @@ export const checkSubscriptionLimit = (feature) => {
 
             const currentCount = usage[usageKey] || 0;
 
-            // ── 9. Enforce the limit ──
-            if (currentCount >= limit) {
+            // ── 8. Enforce the limit (skip if unlimited) ──
+            if (limit !== Infinity && currentCount >= limit) {
                 return res.status(403).json({
                     success: false,
                     code: 'PLAN_LIMIT_REACHED',
@@ -128,14 +122,14 @@ export const checkSubscriptionLimit = (feature) => {
                 });
             }
 
-            // ── 10. Attach meta — usage is incremented AFTER success ──
+            // ── 9. Attach meta — usage is incremented AFTER success ──
             req.subscriptionMeta = {
                 userId,
                 userEmail: user.email,
                 plan,
                 usageKey,
                 usage,        // MonthlyUsage document
-                unlimited: false
+                unlimited: (limit === Infinity)
             };
 
             next();
@@ -154,7 +148,7 @@ export const checkSubscriptionLimit = (feature) => {
 export const incrementUsage = async (req) => {
     try {
         const meta = req.subscriptionMeta;
-        if (!meta || meta.unlimited) return; // Unlimited plans — nothing to track
+        if (!meta) return;
 
         const { usage, usageKey } = meta;
         if (!usage || !usageKey) return;

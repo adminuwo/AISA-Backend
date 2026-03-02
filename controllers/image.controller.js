@@ -38,7 +38,7 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
             if (originalImage) {
                 // Determine base64 data - allow both string and object formats
                 let base64Data = typeof originalImage === 'string' ? originalImage : (originalImage.base64Data || originalImage.image || originalImage.data);
-                
+
                 // Strip out data URL prefix if present
                 if (typeof base64Data === 'string' && base64Data.includes('base64,')) {
                     base64Data = base64Data.split('base64,')[1];
@@ -69,7 +69,7 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
 
         let response;
         let modelId = originalImage ? 'imagen-3.0-capability-001' : 'imagen-3.0-generate-001';
-        
+
         try {
             response = await attemptVertexEdit(modelId);
         } catch (err) {
@@ -112,7 +112,7 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
 
     } catch (error) {
         const errorMsg = error.message || "Unknown error";
-        
+
         if (originalImage) {
             console.error(`[VERTEX IMAGE EDIT FAILED] Reason: ${errorMsg}. Cannot fallback to Pollinations for edits.`);
             throw new Error(`Image modification failed: ${errorMsg}`);
@@ -171,9 +171,12 @@ export const generateImage = async (req, res, next) => {
         }
 
         // Increment usage if successful
-        if (req.monthlyUsage && req.usageKey) {
-            const { default: subscriptionService } = await import('../services/subscriptionService.js');
-            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        if (req.subscriptionMeta) {
+            const { usage, usageKey } = req.subscriptionMeta;
+            if (usage && usageKey) {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(usage, usageKey);
+            }
         }
 
         res.status(200).json({
@@ -238,9 +241,12 @@ export const editImage = async (req, res, next) => {
         }
 
         // Increment usage if successful (Using 'image' limit for now)
-        if (req.monthlyUsage && req.usageKey) {
-            const { default: subscriptionService } = await import('../services/subscriptionService.js');
-            await subscriptionService.incrementUsage(req.monthlyUsage, req.usageKey);
+        if (req.subscriptionMeta) {
+            const { usage, usageKey } = req.subscriptionMeta;
+            if (usage && usageKey) {
+                const { default: subscriptionService } = await import('../services/subscriptionService.js');
+                await subscriptionService.incrementUsage(usage, usageKey);
+            }
         }
 
         res.status(200).json({
