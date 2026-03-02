@@ -4,9 +4,9 @@ import logger from '../utils/logger.js';
 import { GoogleAuth } from 'google-auth-library';
 
 // Helper function to generate or modify image using Vertex AI
-export const generateImageFromPrompt = async (prompt, originalImage = null) => {
+export const generateImageFromPrompt = async (prompt, originalImage = null, aspectRatio = '1:1') => {
     try {
-        console.log(`[VERTEX IMAGE] Triggered for: "${prompt}" (Edit: ${!!originalImage})`);
+        console.log(`[VERTEX IMAGE] Triggered for: "${prompt}" (Edit: ${!!originalImage}, Ratio: ${aspectRatio})`);
 
         // Check if we have credentials to even attempt Vertex
         if (!process.env.GOOGLE_APPLICATION_CREDENTIALS && !process.env.GCP_PROJECT_ID) {
@@ -56,6 +56,14 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
                         editMode: prompt.toLowerCase().includes('background') ? "product-image" : "inpainting-insert"
                     };
                 }
+            } else {
+                // Determine Vertex AI compatible aspect ratio for new generation
+                let vertexRatio = '1:1';
+                if (aspectRatio === '16:9') vertexRatio = '16:9';
+                else if (aspectRatio === '4:5') vertexRatio = '3:4'; // Closest vertical supported by vertex
+                else if (aspectRatio === '4:7') vertexRatio = '9:16'; // Closest vertical supported by vertex
+
+                paramStruct.aspectRatio = vertexRatio;
             }
 
             return await axios.post(targetEndpoint,
@@ -120,9 +128,16 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
 
         console.warn(`[VERTEX IMAGE FALLBACK] Reason: ${errorMsg}. Switching to Pollinations.`);
 
+        // Determine dimensions for Pollinations based on ratio
+        let pWidth = 1024;
+        let pHeight = 1024;
+        if (aspectRatio === '16:9') { pWidth = 1280; pHeight = 720; }
+        else if (aspectRatio === '4:5') { pWidth = 800; pHeight = 1000; }
+        else if (aspectRatio === '4:7') { pWidth = 800; pHeight = 1400; }
+
         // Robust Fallback to Pollinations with Flux model
         const safePrompt = encodeURIComponent(prompt.substring(0, 500));
-        const pollinationsUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${pWidth}&height=${pHeight}&model=flux&seed=${Math.floor(Math.random() * 1000000)}`;
 
         try {
             console.log(`[PROXY DOWNLOAD] Fetching from: ${pollinationsUrl}`);
@@ -155,7 +170,7 @@ import { refineBrandPrompt } from '../utils/brandIdentity.js';
 // @desc    Generate Image
 export const generateImage = async (req, res, next) => {
     try {
-        let { prompt } = req.body || {};
+        let { prompt, aspectRatio = '1:1' } = req.body || {};
 
         if (!prompt) {
             return res.status(400).json({ success: false, message: 'Prompt is required' });
@@ -164,10 +179,10 @@ export const generateImage = async (req, res, next) => {
         // Apply Brand Identity Refinement
         prompt = refineBrandPrompt(prompt, 'image');
 
-        if (logger && logger.info) logger.info(`[Image Generation] Processing: "${prompt}"`);
-        else console.log(`[Image Generation] Processing: "${prompt}"`);
+        if (logger && logger.info) logger.info(`[Image Generation] Processing: "${prompt}" (Ratio: ${aspectRatio})`);
+        else console.log(`[Image Generation] Processing: "${prompt}" (Ratio: ${aspectRatio})`);
 
-        const imageUrl = await generateImageFromPrompt(prompt);
+        const imageUrl = await generateImageFromPrompt(prompt, null, aspectRatio);
 
         if (!imageUrl) {
             throw new Error("Failed to retrieve image URL from any source.");
