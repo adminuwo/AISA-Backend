@@ -1,10 +1,17 @@
 import { generativeModel, genAIInstance, modelName } from '../config/vertex.js';
 import { HarmCategory, HarmBlockThreshold } from '@google/generative-ai';
-import logger from '../utils/logger.js';
+import { BRAND_SYSTEM_RULES } from '../utils/brandIdentity.js';
 
 export const askVertex = async (prompt, context = null, options = {}) => {
     try {
-        const { systemInstruction, images, documents } = options;
+        let { systemInstruction, images, documents } = options;
+
+        // Inject Brand Identity if no specific instructions provided
+        if (!systemInstruction) {
+            systemInstruction = `You are AISA™, the official AI assistant of the AISA™ platform.
+            
+${BRAND_SYSTEM_RULES}`;
+        }
 
         let finalPrompt = prompt;
         // Combine context with prompt if available (if not using system instruction to carry context)

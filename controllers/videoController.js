@@ -24,10 +24,12 @@ try {
   logger.warn(`[GCS] Failed to initialize Google Cloud Storage: ${err.message}`);
 }
 
+import { refineBrandPrompt } from '../utils/brandIdentity.js';
+
 // Video generation using external APIs (e.g., Replicate, Runway, or similar)
 export const generateVideo = async (req, res) => {
   try {
-    const { prompt, duration = 5, quality = 'medium', aspectRatio } = req.body;
+    let { prompt, duration = 5, quality = 'medium', aspectRatio } = req.body;
     const userId = req.user?.id;
 
     let finalAspectRatio = '16:9';
@@ -51,6 +53,9 @@ export const generateVideo = async (req, res) => {
         message: 'Prompt is required and must be a string'
       });
     }
+
+    // Apply Brand Identity Refinement
+    prompt = refineBrandPrompt(prompt, 'video');
 
     logger.info(`[VIDEO] Generating video with prompt: ${prompt.substring(0, 100)}`);
 

@@ -1,6 +1,7 @@
 import axios from 'axios';
 import logger from '../utils/logger.js';
 import dotenv from 'dotenv';
+import { BRAND_SYSTEM_RULES } from '../utils/brandIdentity.js';
 
 dotenv.config();
 
@@ -23,7 +24,9 @@ export const askOpenAI = async (prompt, context = null, options = {}) => {
             const nameContext = userName ? `User's Name is "${userName}". ` : "";
             messages.push({
                 role: 'system',
-                content: `You are AISA™, an advanced intelligent assistant with behavioral analysis and contextual memory. ${nameContext}
+                content: `You are AISA™, the official AI assistant of the AISA™ platform. ${nameContext}
+
+${BRAND_SYSTEM_RULES}
 
 You must automatically understand the user’s interests, expertise level, and topic preference ONLY from their messages.
 

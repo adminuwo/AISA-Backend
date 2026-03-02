@@ -150,16 +150,19 @@ export const generateImageFromPrompt = async (prompt, originalImage = null) => {
     }
 };
 
+import { refineBrandPrompt } from '../utils/brandIdentity.js';
+
 // @desc    Generate Image
-// @route   POST /api/image/generate
-// @access  Public
 export const generateImage = async (req, res, next) => {
     try {
-        const { prompt } = req.body || {};
+        let { prompt } = req.body || {};
 
         if (!prompt) {
             return res.status(400).json({ success: false, message: 'Prompt is required' });
         }
+
+        // Apply Brand Identity Refinement
+        prompt = refineBrandPrompt(prompt, 'image');
 
         if (logger && logger.info) logger.info(`[Image Generation] Processing: "${prompt}"`);
         else console.log(`[Image Generation] Processing: "${prompt}"`);
