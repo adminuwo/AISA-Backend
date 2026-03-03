@@ -79,8 +79,8 @@ app.get("/ping-top", (req, res) => {
   res.send("Top ping works");
 })
 
-// (Static serving removed for separate frontend deployment)
-// app.use(express.static(path.join(__dirname, 'public')));
+// Serve static frontend files from 'public' directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // API Health Check (moved from root)
 app.get("/api/health", (req, res) => {
@@ -130,8 +130,13 @@ app.use('/api/aibase/knowledge', knowledgeRoute);
 
 // --- End of Routes ---
 
-// (SPA Catch-all removed for separate frontend deployment)
-// app.get('*', ...);
+// SPA Catch-all to serve index.html for unknown non-API routes
+app.use((req, res, next) => {
+  if (req.method === 'GET' && !req.path.startsWith('/api')) {
+    return res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  }
+  next();
+});
 
 // Catch-all 404 for API routes
 app.use((req, res) => {
