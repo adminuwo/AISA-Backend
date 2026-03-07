@@ -5,7 +5,13 @@ import {
     getAdminStats, 
     searchUserByEmail, 
     adjustCredits, 
-    manualPlanUpgrade 
+    manualPlanUpgrade,
+    createPlan,
+    updatePlan,
+    deletePlan,
+    createCreditPackage,
+    updateCreditPackage,
+    deleteCreditPackage
 } from '../controllers/adminController.js';
 
 const router = express.Router();
@@ -23,5 +29,15 @@ router.get('/stats', verifyToken, isAdmin, getAdminStats);
 router.get('/search-user', verifyToken, isAdmin, searchUserByEmail);
 router.post('/adjust-credits', verifyToken, isAdmin, adjustCredits);
 router.post('/manual-upgrade', verifyToken, isAdmin, manualPlanUpgrade);
+
+// Plan routes
+router.post('/plans', verifyToken, isAdmin, createPlan);
+router.put('/plans/:planId', verifyToken, isAdmin, updatePlan);
+router.delete('/plans/:planId', verifyToken, isAdmin, deletePlan);
+
+// Credit package routes
+router.post('/packages', verifyToken, isAdmin, createCreditPackage);
+router.put('/packages/:packageId', verifyToken, isAdmin, updateCreditPackage);
+router.delete('/packages/:packageId', verifyToken, isAdmin, deleteCreditPackage);
 
 export default router;

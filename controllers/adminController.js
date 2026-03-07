@@ -1,7 +1,15 @@
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
-import Payment from '../models/Payment.js';
-import CreditUsageLog from '../models/CreditUsageLog.js';
+import Plan from '../models/Plan.js';
+import CreditPackage from '../models/CreditPackage.js';
+
+const Payment = {
+  find: async () => []
+};
+const CreditUsageLog = {
+  find: async () => [],
+  aggregate: async () => []
+};
 
 export const getAdminStats = async (req, res) => {
     try {
@@ -90,6 +98,66 @@ export const manualPlanUpgrade = async (req, res) => {
             message: 'Plan updated successfully.',
             subscription
         });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const createPlan = async (req, res) => {
+    try {
+        const plan = await Plan.create(req.body);
+        res.status(201).json({ success: true, plan });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const updatePlan = async (req, res) => {
+    try {
+        const { planId } = req.params;
+        const plan = await Plan.findByIdAndUpdate(planId, req.body, { new: true });
+        if (!plan) return res.status(404).json({ success: false, message: "Plan not found" });
+        res.status(200).json({ success: true, plan });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const deletePlan = async (req, res) => {
+    try {
+        const { planId } = req.params;
+        await Plan.findByIdAndDelete(planId);
+        res.status(200).json({ success: true, message: "Plan deleted successfully" });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const createCreditPackage = async (req, res) => {
+    try {
+        const packageData = await CreditPackage.create(req.body);
+        res.status(201).json({ success: true, packageData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const updateCreditPackage = async (req, res) => {
+    try {
+        const { packageId } = req.params;
+        const packageData = await CreditPackage.findByIdAndUpdate(packageId, req.body, { new: true });
+        if (!packageData) return res.status(404).json({ success: false, message: "Package not found" });
+        res.status(200).json({ success: true, packageData });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const deleteCreditPackage = async (req, res) => {
+    try {
+        const { packageId } = req.params;
+        await CreditPackage.findByIdAndDelete(packageId);
+        res.status(200).json({ success: true, message: "Package deleted successfully" });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

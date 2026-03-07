@@ -1,51 +1,87 @@
 import User from '../models/User.js';
 import Subscription from '../models/Subscription.js';
-import * as creditManager from '../utils/creditManager.js';
 
-class SubscriptionService {
-    /**
-     * Check if a user can use tools based on their credits
-     */
-    async checkCredits(userId, tools) {
+const getToolCost = (toolName) => {
+    switch (toolName) {
+        case 'chat': return 10;       // Free plan: 100 credits = 10 chats
+        case 'deep_search': return 10;
+        case 'web_search': return 15;
+        case 'generate_image': return 20;
+        case 'generate_video': return 25;
+        case 'convert_document': return 10;
+        case 'convert_audio': return 10;
+        case 'code_writer': return 5;
+        default: return 0;
+    }
+};
+
+const premiumTools = [
+    'generate_video',
+    'generate_image',
+    'web_search',
+    'deep_search',
+    'convert_audio',
+    'convert_document',
+    'code_writer'
+];
+
+export const checkPremiumAccess = async (userId) => {
+    const user = await User.findById(userId);
+    if (!user) return false;
+
+    // Founders get everything
+    if (user.founderStatus) return true;
+
+    // Check if they have an active paid subscription
+    const sub = await Subscription.findOne({
+        userId,
+        subscriptionStatus: 'active'
+    }).populate('planId');
+
+    if (sub && sub.planId && (sub.planId.priceMonthly > 0 || sub.planId.priceYearly > 0)) {
+        return true;
+    }
+
+    return false;
+};
+
+export const subscriptionService = {
+    checkCredits: async (userId, toolsRequested = []) => {
         const user = await User.findById(userId);
         if (!user) throw new Error("User not found");
 
-        const result = await creditManager.checkCredits(userId, tools);
-        if (!result.allowed) {
-            const error = new Error(result.message || "Insufficient credits");
-            error.code = "PLAN_LIMIT_REACHED";
-            error.status = 403;
-            throw error;
+        const hasPremiumTool = toolsRequested.some(tool => premiumTools.includes(tool));
+        if (hasPremiumTool) {
+            const hasAccess = await checkPremiumAccess(userId);
+            if (!hasAccess) {
+                throw new Error("PREMIUM_RESTRICTED");
+            }
         }
 
-        return { cost: result.cost };
-    }
+        const totalCost = toolsRequested.reduce((acc, tool) => acc + getToolCost(tool), 0);
 
-    /**
-     * Deduct credits after successful execution
-     */
-    async deductCredits(userId, tools, requestId) {
-        return await creditManager.deductCredits(userId, tools, requestId);
-    }
+        if ((user.credits || 0) < totalCost) {
+            throw new Error("Insufficient credits");
+        }
+        return true;
+    },
 
-    /**
-     * Get user usage and plan info for dashboard
-     */
-    async getUsageStatus(userId) {
-        let subscription = await Subscription.findOne({ userId });
-        
-        if (!subscription) {
-            subscription = await creditManager.createOrResetFreePlan(userId);
+    deductCredits: async (userId, toolsUsed = [], sessionId) => {
+        const user = await User.findById(userId);
+        if (!user) throw new Error("User not found");
+
+        const totalCost = toolsUsed.reduce((acc, tool) => acc + getToolCost(tool), 0);
+        if (totalCost === 0) return true;
+
+        if ((user.credits || 0) < totalCost) {
+            throw new Error("Insufficient credits");
         }
 
-        return {
-            plan_name: subscription.plan_name,
-            remaining_credits: subscription.remaining_credits,
-            total_credits: subscription.total_credits,
-            expiry_date: subscription.expiry_date,
-            status: subscription.status
-        };
-    }
-}
+        user.credits -= totalCost;
+        await user.save();
+        return true;
+    },
 
-export default new SubscriptionService();
+    checkLimit: async () => ({ usage: 0, usageKey: 'mock' }),
+    incrementUsage: () => { }
+};

@@ -117,46 +117,17 @@ const userSchema = new mongoose.Schema({
 
         // Account
         account: {
-            nickname: { type: String, default: '' },
-            subscriptionPlan: { type: String, default: 'Free' }
+            nickname: { type: String, default: '' }
         }
     },
     modePreferences: {
         defaultMode: { type: String, default: 'NORMAL_CHAT' },
         autoDetect: { type: Boolean, default: true }
     },
-    plan: {
-        type: String,
-        enum: ['basic', 'pro', 'king'],
-        default: 'basic'
-    },
-    planStartDate: {
-        type: Date,
-        default: Date.now
-    },
-    planEndDate: {
-        type: Date,
-        default: null
-    },
-    isExpired: {
-        type: Boolean,
-        default: false
-    },
-    planExpiredAt: {
-        type: Date,
-        default: null
-    },
-    isActive: {
-        type: Boolean,
-        default: true
-    },
-    subscription: {
-        id: String,
-        status: String,
-        razorpay_payment_id: String,
-        razorpay_order_id: String,
-        razorpay_signature: String
-    },
+
+    credits: { type: Number, default: 100 },
+    founderStatus: { type: Boolean, default: false },
+
     notificationsInbox: [{
         id: String,
         title: String,

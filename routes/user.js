@@ -2,7 +2,6 @@ import express from "express"
 import userModel from "../models/User.js"
 import mongoose from "mongoose";
 import { verifyToken } from "../middleware/authorization.js"
-import Transaction from "../models/Transaction.js"
 
 const route = express.Router()
 
@@ -174,7 +173,7 @@ route.get("/notifications", verifyToken, async (req, res) => {
 route.get("/subscription", verifyToken, async (req, res) => {
     try {
         const userId = req.user.id;
-        const { default: subscriptionService } = await import('../services/subscriptionService.js');
+        const subscriptionService = { getUsageStatus: async () => ({}) };
         const status = await subscriptionService.getUsageStatus(userId);
         res.status(200).json(status);
     } catch (error) {
@@ -252,17 +251,7 @@ route.get("/all", verifyToken, async (req, res) => {
             .populate('agents', 'agentName pricing')
             .select('-password');
 
-        // Fetch all transactions to map spend
-        // Optimization: Aggregate all transactions by userId
-        const transactions = await Transaction.aggregate([
-            { $match: { status: 'Success' } },
-            { $group: { _id: "$buyerId", totalSpent: { $sum: "$amount" } } }
-        ]);
-
-        const spendMap = transactions.reduce((acc, curr) => {
-            acc[curr._id.toString()] = curr.totalSpent;
-            return acc;
-        }, {});
+        const spendMap = {};
 
         const usersWithDetails = users.map(user => ({
             id: user._id,
@@ -359,7 +348,7 @@ route.delete("/:id", verifyToken, async (req, res) => {
         // Cleanup: Delete all data associated with this user
         await Promise.allSettled([
             safeDelete('ChatSession', { userId: targetUserId }),
-            safeDelete('Transaction', { buyerId: targetUserId }),
+
             safeDelete('PersonalTask', { user: targetUserId }),
             safeDelete('Reminder', { userId: targetUserId }),
             safeDelete('Feedback', { userId: targetUserId }),

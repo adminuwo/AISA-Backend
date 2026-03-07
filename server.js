@@ -29,10 +29,9 @@ import voiceRoutes from './routes/voiceRoutes.js';
 import reminderRoutes from './routes/reminderRoutes.js';
 import imageRoutes from './routes/image.routes.js';
 import videoRoutes from './routes/videoRoutes.js';
-import paymentRoutes from './routes/paymentRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import memoryRoutes from './routes/memoryRoutes.js';
-import { startPlanExpiryService } from './services/planExpiryService.js';
+import pricingRoutes from './routes/pricingRoutes.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 
 // End of standard imports
@@ -50,9 +49,7 @@ connectDB().then(async () => {
     const { initializeFromDB } = await import('./services/ai.service.js');
     await initializeFromDB();
     console.log("✅ AI Services (Embeddings & Vector Store) pre-initialized.");
-    // Start daily plan expiry + warning-email service
-    startPlanExpiryService();
-    console.log('✅ Plan Expiry Service started.');
+
   } catch (err) {
     console.error("❌ Failed to pre-initialize AI services:", err.message);
   }
@@ -115,7 +112,7 @@ app.use('/api/personal-assistant', personalTaskRoutes);
 app.use('/api/memory', memoryRoutes);
 
 // Business & Dashboard
-app.use('/api/payment', paymentRoutes);
+app.use('/api/pricing', pricingRoutes);
 app.use('/api/subscription', subscriptionRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api', dashboardRoutes);
@@ -155,12 +152,9 @@ app.use((err, req, res, next) => {
 });
 
 // Start listening
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`AISA Backend running on http://0.0.0.0:${PORT}`);
-  console.log("Razorpay Config Check:", {
-    KeyID: process.env.RAZORPAY_KEY_ID ? `${process.env.RAZORPAY_KEY_ID.substring(0, 8)}...` : "MISSING",
-    Secret: process.env.RAZORPAY_KEY_SECRET ? "PRESENT" : "MISSING"
-  });
+app.listen(PORT, () => {
+  console.log(`AISA Backend running on http://localhost:${PORT}`);
+
 });
 
 // Keep process alive for local development

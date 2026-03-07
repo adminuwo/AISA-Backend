@@ -17,7 +17,7 @@ import { convertFile } from "../utils/fileConversion.js";
 import { generateVideoFromPrompt } from "../controllers/videoController.js";
 import { generateImageFromPrompt } from "../controllers/image.controller.js";
 import { getMemoryContext, extractUserMemory, updateMemory } from "../utils/memoryService.js";
-import subscriptionService from "../services/subscriptionService.js";
+import { subscriptionService, checkPremiumAccess } from '../services/subscriptionService.js';
 
 import axios from "axios";
 
@@ -60,19 +60,34 @@ router.post("/", optionalVerifyToken, identifyGuest, async (req, res) => {
     }
 
     // --- SUBSCRIPTION PLAN & CREDIT CHECKS ---
-    let toolsRequested = ['chat']; 
-    if (mode === 'DEEP_SEARCH' || mode === 'web_search' || requiresWebSearch(content)) toolsRequested = ['deep_search'];
-    if (mode === 'CODE_WRITER') toolsRequested = ['code_writer'];
-    if (document) toolsRequested.push('convert_document');
+    let toolsRequested = ['chat'];
+    if (mode === 'DEEP_SEARCH') toolsRequested.push('deep_search');
+    else if (mode === 'web_search') toolsRequested.push('web_search');
+
+    if (mode === 'CODE_WRITER') toolsRequested.push('code_writer');
+
+    // Check if document exists AND is not an empty array
+    const hasDocuments = document && (Array.isArray(document) ? document.length > 0 : Object.keys(document).length > 0);
+    if (hasDocuments) {
+      toolsRequested.push('convert_document');
+    }
 
     if (req.user) {
       try {
         await subscriptionService.checkCredits(req.user.id, toolsRequested);
       } catch (subError) {
-        return res.status(403).json({ 
-          success: false, 
-          code: "PLAN_LIMIT_REACHED", 
-          message: "Insufficient credits. Please upgrade your plan."
+        if (subError.message === "PREMIUM_RESTRICTED") {
+          return res.status(403).json({
+            success: false,
+            code: "PREMIUM_ONLY",
+            message: "This feature is not available in the free plan. Please upgrade your plan to access premium magic tools."
+          });
+        }
+        // Insufficient credits — free plan used all 100 credits
+        return res.status(403).json({
+          success: false,
+          code: "OUT_OF_CREDITS",
+          message: "You've used all your credits! Upgrade your plan to continue chatting with AISA."
         });
       }
     }
@@ -238,8 +253,8 @@ User's Name is "${req.user.name}".
     // --- DUPLICATE QUESTION DETECTION (SEARCH ACROSS ALL SESSIONS) ---
     let duplicateNote = "";
     if (content && content.length > 10) {
-      const searchCriteria = req.user 
-        ? { userId: req.user.id } 
+      const searchCriteria = req.user
+        ? { userId: req.user.id }
         : (req.guest ? { guestId: req.guest.guestId } : null);
 
       if (searchCriteria) {
@@ -257,7 +272,7 @@ User's Name is "${req.user.name}".
               const prevDate = new Date(msgMatch.timestamp || prevMatch.lastModified).toLocaleDateString('en-GB', {
                 day: '2-digit', month: '2-digit', year: '2-digit'
               });
-              
+
               // Only alert if it's not the same message in the CURRENT history part vs some OLD content
               // (Simplistic check: if history is very short or different, it's likely a repeat)
               duplicateNote = `
@@ -479,11 +494,25 @@ MANDATORY MEDIA RULES:
     let webSearchInstruction = '';
     const isDeepSearch = systemInstruction && systemInstruction.includes('DEEP SEARCH MODE ENABLED');
 
-    if (requiresWebSearch(content) || isDeepSearch || detectedMode === 'web_search') {
+    // Auto web search from keywords is only available to premium users
+    let hasPremium = false;
+    if (req.user) {
+      try {
+        hasPremium = await checkPremiumAccess(req.user.id || req.user._id);
+      } catch (e) {
+        console.error("Error checking premium status for search:", e);
+      }
+    }
+
+    const isAutoSearch = requiresWebSearch(content);
+    // Execute search if explicitly requested (already billed) OR if auto-detected AND user has premium
+    const shouldDoWebSearch = isDeepSearch || detectedMode === 'web_search' || (isAutoSearch && hasPremium);
+
+    if (shouldDoWebSearch) {
       console.log(`[WEB SEARCH] Query requires real-time information${isDeepSearch ? ' (Forced by Deep Search)' : ''}`);
       try {
         const searchQuery = extractSearchQuery(content);
-        
+
         // Check Cache
         searchResults = getCachedSearch(searchQuery);
 
@@ -500,10 +529,10 @@ MANDATORY MEDIA RULES:
         if (searchResults) {
           console.log(`[WEB SEARCH] Using results for: "${searchQuery}"`);
           webSearchInstruction = getWebSearchSystemInstruction(searchResults, language || 'English', isDeepSearch);
-          
+
           // Inject search results and instructions directly into system instruction for maximum priority
           finalSystemInstruction += `\n\n${webSearchInstruction}`;
-          
+
           // Also keep in parts for context history
           parts.push({ text: `[REAL-TIME SEARCH RESULTS]:\n${JSON.stringify(searchResults.snippets)}` });
         }
@@ -761,7 +790,7 @@ MANDATORY MEDIA RULES:
       let finalTools = [...toolsRequested];
       if (reply.includes('"action": "generate_image"')) finalTools.push('generate_image');
       if (reply.includes('"action": "generate_video"')) finalTools.push('generate_video');
-      
+
       // Deduct Credits
       await subscriptionService.deductCredits(req.user.id, finalTools, sessionId || 'chat-' + Date.now());
     }
@@ -1044,7 +1073,7 @@ MANDATORY MEDIA RULES:
           let canGenerate = true;
           let limitUsageData = null;
           if (req.user) {
-            try { limitUsageData = await subscriptionService.checkLimit(req.user.id, 'image'); } 
+            try { limitUsageData = await subscriptionService.checkLimit(req.user.id, 'image'); }
             catch (limitErr) { canGenerate = false; }
           }
 

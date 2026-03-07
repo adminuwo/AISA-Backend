@@ -8,7 +8,6 @@ import { sendVerificationEmail, sendResetPasswordEmail, sendPasswordChangeSucces
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { normalisePlan } from "../config/planLimits.js";
 
 import { OAuth2Client } from "google-auth-library";
 
@@ -148,10 +147,8 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ error: "Incorrect password" });
     }
 
-    // Normalise plan to lowercase before touching DB
-    const userPlan = normalisePlan(user.plan);
-    if (user.plan !== userPlan) { user.plan = userPlan; } // sync if old data
-
+    // Remove normalisePlan
+    const userPlan = user.plan || "Basic";
     // Generate token
     const token = generateTokenAndSetCookies(res, user._id, user.email, user.name, userPlan);
 
@@ -276,7 +273,7 @@ router.post("/google", async (req, res) => {
     }
 
     // 2. Generate token
-    const userPlan = normalisePlan(user.plan);
+    const userPlan = user.plan || "Basic";
     const token = generateTokenAndSetCookies(res, user._id, user.email, user.name, userPlan);
 
     res.status(200).json({

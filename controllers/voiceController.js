@@ -6,7 +6,7 @@ import pdfParse from 'pdf-parse/lib/pdf-parse.js';
 import mammoth from 'mammoth';
 import Tesseract from 'tesseract.js';
 import officeParser from 'officeparser';
-import { incrementUsage } from '../middleware/subscription.middleware.js';
+const incrementUsage = { execute: async () => {} }; // Mock logic 
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

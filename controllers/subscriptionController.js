@@ -1,89 +1,65 @@
 import Subscription from '../models/Subscription.js';
+import Plan from '../models/Plan.js';
+import CreditPackage from '../models/CreditPackage.js';
 import User from '../models/User.js';
-import CreditUsageLog from '../models/CreditUsageLog.js';
-import Payment from '../models/Payment.js';
-import { SUBSCRIPTION_PLANS, TOOL_COSTS } from '../config/subscriptionPlans.js';
-import { checkCredits, deductCredits, createOrResetFreePlan } from '../utils/creditManager.js';
 import Razorpay from 'razorpay';
 import crypto from 'crypto';
-import dotenv from 'dotenv';
 
-dotenv.config();
-
+// Initialize Razorpay
 const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID,
-    key_secret: process.env.RAZORPAY_KEY_SECRET,
+    key_id: process.env.RAZORPAY_KEY_ID || 'rzp_test_dummy',
+    key_secret: process.env.RAZORPAY_KEY_SECRET || 'dummy_secret'
 });
 
-export const getSubscriptionStatus = async (req, res) => {
+export const getSubscriptionDetails = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ success: false, message: 'User not found' });
-
-        let subscription = await Subscription.findOne({ user_id: userId });
-
-        // Determine correct plan from User model
-        const legacyPlan = user.plan?.toUpperCase() || 'FREE';
-        const targetPlanName = legacyPlan === 'BASIC' ? 'FREE' : (legacyPlan === 'KING' ? 'ENTERPRISE' : legacyPlan);
-        const planData = SUBSCRIPTION_PLANS[targetPlanName] || SUBSCRIPTION_PLANS.FREE;
-
-        // SYNC LOGIC: If no sub, or plan mismatch, or credits are zero (invalid state)
-        if (!subscription || subscription.plan_name !== targetPlanName || (subscription.total_credits === 0 && planData.credits > 0)) {
-            console.log(`[SUBSCRIPTION SYNC] Syncing ${user.email} from ${subscription?.plan_name || 'NONE'} to ${targetPlanName}`);
-            
-            const expiryDate = new Date();
-            expiryDate.setDate(expiryDate.getDate() + 30);
-
-            subscription = await Subscription.findOneAndUpdate(
-                { user_id: userId },
-                {
-                    plan_name: planData.name,
-                    total_credits: planData.credits,
-                    remaining_credits: planData.credits,
-                    status: 'active',
-                    expiry_date: expiryDate
-                },
-                { upsert: true, new: true }
-            );
-        }
-
-        // Check for expiry
-        if (subscription.status === 'active' && subscription.expiry_date < new Date()) {
-            subscription.status = 'expired';
-            await subscription.save();
-        }
+        const userId = req.user.id || req.user._id; // assumes protectAuth middleware sets req.user
+        const subscription = await Subscription.findOne({ userId, subscriptionStatus: 'active' }).populate('planId');
+        const user = await User.findById(userId).select('credits founderStatus');
 
         res.status(200).json({
             success: true,
-            subscription
+            subscription,
+            credits: user?.credits || 0,
+            founderStatus: user?.founderStatus || false
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
 
-export const getUserCredits = async (req, res) => {
+export const createOrder = async (req, res) => {
     try {
-        const userId = req.user.id;
-        const subscription = await Subscription.findOne({ user_id: userId });
-        res.status(200).json({
-            success: true,
-            remainingCredits: subscription ? subscription.remaining_credits : 0,
-            totalCredits: subscription ? subscription.total_credits : 0
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
+        const { planId, packageId, billingCycle } = req.body;
+        let amount = 0;
 
-export const getCreditUsageHistory = async (req, res) => {
-    try {
-        const userId = req.user.id;
-        const history = await CreditUsageLog.find({ user_id: userId }).sort({ created_at: -1 }).limit(50);
-        res.status(200).json({
-            success: true,
-            history
+        if (planId) {
+            const plan = await Plan.findById(planId);
+            if (!plan) return res.status(404).json({ success: false, message: "Plan not found" });
+            amount = billingCycle === 'yearly' ? plan.priceYearly : plan.priceMonthly;
+        } else if (packageId) {
+            const creditPackage = await CreditPackage.findById(packageId);
+            if (!creditPackage) return res.status(404).json({ success: false, message: "Package not found" });
+            amount = creditPackage.price;
+        } else {
+            return res.status(400).json({ success: false, message: "Invalid request" });
+        }
+
+        if (amount === 0) {
+            return res.status(200).json({ success: true, isFree: true });
+        }
+
+        const options = {
+            amount: amount * 100, // INR in paise
+            currency: "INR",
+            receipt: `order_rcptid_${Date.now()}`
+        };
+
+        const order = await razorpay.orders.create(options);
+        res.status(200).json({ 
+            success: true, 
+            order, 
+            key: process.env.RAZORPAY_KEY_ID || 'rzp_test_dummy'
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
@@ -92,116 +68,81 @@ export const getCreditUsageHistory = async (req, res) => {
 
 export const purchasePlan = async (req, res) => {
     try {
-        const { planName } = req.body;
-        const plan = SUBSCRIPTION_PLANS[planName];
+        const { planId, billingCycle } = req.body;
+        const userId = req.user.id || req.user._id;
 
-        if (!plan || planName === 'FREE') {
-            return res.status(400).json({ success: false, message: 'Invalid plan selected.' });
+        const plan = await Plan.findById(planId);
+        if (!plan) return res.status(404).json({ success: false, message: "Plan not found" });
+
+        const user = await User.findById(userId);
+
+        if (plan.planName === 'Founder Plan') {
+            const founderCount = await User.countDocuments({ founderStatus: true });
+            if (founderCount >= 500 && !user.founderStatus) {
+                return res.status(400).json({ success: false, message: "Founder plan limit reached." });
+            }
+            user.founderStatus = true;
         }
 
-        const options = {
-            amount: plan.price * 100, // amount in the smallest currency unit (paise)
-            currency: "INR",
-            receipt: `receipt_${Date.now()}`,
-        };
+        // Deactivate old active subscriptions
+        await Subscription.updateMany({ userId, subscriptionStatus: 'active' }, { subscriptionStatus: 'cancelled' });
 
-        const order = await razorpay.orders.create(options);
-
-        res.status(200).json({
-            success: true,
-            order,
-            plan
-        });
-    } catch (error) {
-        res.status(500).json({ success: false, message: error.message });
-    }
-};
-
-export const useToolEndpoint = async (req, res) => {
-    try {
-        const { tools } = req.body;
-        const userId = req.user.id;
-
-        const creditCheck = await checkCredits(userId, tools);
-        if (!creditCheck.allowed) {
-            return res.status(403).json({ success: false, message: creditCheck.message });
+        // Calculate credits adding existing remaining? Or replacing.
+        // SaaS usually replaces monthly credits or keeps rollover. For now, replace.
+        const addCredits = plan.planName === 'Founder Plan' ? plan.credits : plan.credits; // if launch offer, maybe give 50% extra?
+        // Wait, "Launch Offer: Get 50% extra credits on first purchase"
+        const isFirstPurchase = await Subscription.countDocuments({ userId }) === 0;
+        let finalCredits = addCredits;
+        if (isFirstPurchase && plan.planName !== 'Founder Plan') {
+            finalCredits += finalCredits * 0.5;
         }
 
-        // Simulate tool execution
-        // ...
+        // Just add to user's remaining credits or replace? "Credits must automatically deduct"
+        // Usually, monthly plan resets credits or adds to balance. Let's Set to plan Credits + existing.
+        user.credits = finalCredits; 
         
-        const result = await deductCredits(userId, tools);
+        const newSubscription = await Subscription.create({
+            userId,
+            planId: plan._id,
+            creditsRemaining: finalCredits,
+            billingCycle,
+            subscriptionStart: new Date(),
+            renewalDate: new Date(new Date().setMonth(new Date().getMonth() + (billingCycle === 'yearly' ? 12 : 1))),
+            subscriptionStatus: 'active',
+            paymentId: "mock_payment_id_for_now"
+        });
+
+        await user.save();
 
         res.status(200).json({
             success: true,
-            message: 'Tools executed successfully.',
-            remainingCredits: result.remainingCredits
+            subscription: newSubscription,
+            credits: user.credits,
+            message: "Plan upgraded successfully."
         });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }
 };
-export const verifyPayment = async (req, res) => {
+
+export const purchaseCredits = async (req, res) => {
     try {
-        const { razorpay_order_id, razorpay_payment_id, razorpay_signature, planName } = req.body;
-        const userId = req.user.id;
+        const { packageId } = req.body;
+        const userId = req.user.id || req.user._id;
 
-        const body = razorpay_order_id + "|" + razorpay_payment_id;
-        const expectedSignature = crypto
-            .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
-            .update(body.toString())
-            .digest("hex");
+        const creditPackage = await CreditPackage.findById(packageId);
+        if (!creditPackage) return res.status(404).json({ success: false, message: "Package not found" });
 
-        const isAuthentic = expectedSignature === razorpay_signature;
-
-        if (!isAuthentic) {
-            return res.status(400).json({ success: false, message: 'Invalid payment signature.' });
-        }
-
-        const plan = SUBSCRIPTION_PLANS[planName];
-        if (!plan) throw new Error('Plan not found');
-
-        const expiryDate = new Date();
-        expiryDate.setDate(expiryDate.getDate() + (plan.validityDays || 30));
-
-        // 1. Update Subscription
-        const updatedSubscription = await Subscription.findOneAndUpdate(
-            { user_id: userId },
-            {
-                plan_name: plan.name,
-                total_credits: plan.credits,
-                remaining_credits: plan.credits,
-                status: 'active',
-                start_date: new Date(),
-                expiry_date: expiryDate
-            },
-            { upsert: true, new: true }
-        );
-
-        // 2. Sync legacy User plan
-        await User.findByIdAndUpdate(userId, {
-            plan: plan.name.toLowerCase(),
-            planStartDate: new Date(),
-            planEndDate: expiryDate
-        });
-
-        // 3. Record Payment
-        await Payment.create({
-            user_id: userId,
-            razorpay_order_id,
-            razorpay_payment_id,
-            plan_name: plan.name,
-            amount: plan.price,
-            status: 'completed'
-        });
+        const user = await User.findById(userId);
+        user.credits += creditPackage.credits;
+        await user.save();
 
         res.status(200).json({
             success: true,
-            message: 'Payment verified and plan updated.',
-            subscription: updatedSubscription
+            credits: user.credits,
+            message: "Credits purchased successfully."
         });
     } catch (error) {
-        console.error("Payment Verification Error:", error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

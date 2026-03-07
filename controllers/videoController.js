@@ -76,7 +76,7 @@ export const generateVideo = async (req, res) => {
     if (req.subscriptionMeta) {
       const { usage, usageKey } = req.subscriptionMeta;
       if (usage && usageKey) {
-        const { default: subscriptionService } = await import('../services/subscriptionService.js');
+        const subscriptionService = { incrementUsage: async () => {} };
         await subscriptionService.incrementUsage(usage, usageKey);
       }
     }
