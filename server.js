@@ -32,6 +32,7 @@ import videoRoutes from './routes/videoRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import memoryRoutes from './routes/memoryRoutes.js';
+import dataRoutes from './routes/dataRoutes.js';
 import { startPlanExpiryService } from './services/planExpiryService.js';
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
 
@@ -98,6 +99,7 @@ app.use((req, res, next) => {
 app.use('/api/auth/verify-email', emailVerification);
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoute);
+app.use('/api/user', dataRoutes);  // GDPR data deletion & export
 
 // Intelligence Features
 app.use('/api/chat', chatRoutes);
